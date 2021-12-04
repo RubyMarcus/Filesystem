@@ -1,5 +1,6 @@
 #include <iostream>
 #include <fstream>
+#include <cstring>
 #include "fs.h"
 
 #define BLOCK_SIZE 4096
@@ -65,6 +66,8 @@ FS::format()
 	  
     std::cout << "Size of struct: " << sizeof(int16_t) << std::endl;
 
+    myfile.close();
+
     return 0;
 }
 
@@ -89,14 +92,22 @@ int find_empty_fat_block() {
     for (int i = 0; i < BLOCK_SIZE/2; i++) {
         //std::cout << "Fat entry: " << i << " With number: " << load_f_entries[i] << std::endl;
         if (load_f_entries[i] == 0) {
-           tmp_fat_pointer = i; 
+           tmp_fat_pointer = i;
+           load_f_entries[i] = -1; 
            break;
         }
     }
 
     if (tmp_fat_pointer == -1) {
         std::cout << "ERROR: FULL FAT" << std::endl;
-    }
+        return 1;
+    } 
+    
+    // Write to FAT
+    myfile.seekp(BLOCK_SIZE);
+    myfile.write((char*)&load_f_entries, BLOCK_SIZE);
+
+    myfile.close();
 
     return tmp_fat_pointer;
 }
@@ -117,13 +128,67 @@ FS::create(std::string filepath)
     // Init new file
     dir_entry new_file;
 //    new_file.file_name = std::string(filepath);
+    //new_file.file_name[0] = "h"; 
+    strcpy(new_file.file_name, filepath.c_str());
     new_file.size = 0; // Size is zero since we dont have any data? However, we probably should find a starting disk block.
     new_file.first_blk = find_empty_fat_block();
     new_file.type = 0; // file = 0, directory = 1
     new_file.access_rights = 0x06; // TODO : Check this later
 
+    // Read root
+    // TODO: maybe we dont need to read the file multiple times
+    std::fstream myfile("diskfile.bin", std::ios::out | std::ios::in  | std::ios::binary);
+    
+    if(!myfile) {
+    	std::cout << "Cannot open file!" << std::endl;
+	    return 1;
+    }
 
+    dir_entry d_entries[BLOCK_SIZE / sizeof(dir_entry)];
+    
+    // Find empty slot in root dict
+
+    myfile.seekp(0);
+    myfile.read((char*)&d_entries, BLOCK_SIZE);
+   
+    int tmp_empty_block = -1;
+
+    for(int i = 0; i < (BLOCK_SIZE / sizeof(dir_entry)); i++) {
+        if(d_entries[i].first_blk == 0) {
+            // We found empty dir block.
+            tmp_empty_block = i;
+            break;
+        }
+    }
+    
+    std::cout << "Empty dir block: " << tmp_empty_block << std::endl;
+
+    if(tmp_empty_block == -1) {
+        std::cout << "Couldn't find empty dir block" << std::endl;
+        return 1;
+    }
+
+    myfile.seekp(tmp_empty_block * (BLOCK_SIZE / sizeof(dir_entry)));
+    myfile.write((char*)&new_file, sizeof(dir_entry));
+
+    std::cout << "Filename block: " << new_file.file_name << std::endl;
+
+    /*
+    for(int i = 0; i < BLOCK_SIZE / sizeof(dir_entry); i++) {
+        std::cout << "PAT BLOCK: " << d_entries[i].first_blk << std::endl;        
+        std::cout << "Filename: " << d_entries[i].file_name << std::endl;
+    }
+    */
+
+    // Write to disk.
+    // TODO How do we gather the data
+    
+
+    /*
     std::cout << "Found empty fat: " << new_file.first_blk << std::endl;
+    */
+
+    myfile.close();
 
     return 0;
 }
@@ -134,6 +199,43 @@ int
 FS::cat(std::string filepath)
 {
     std::cout << "FS::cat(" << filepath << ")\n";
+    
+    std::fstream myfile("diskfile.bin", std::ios::out | std::ios::in  | std::ios::binary);
+    
+    dir_entry dir_entries[BLOCK_SIZE / sizeof(dir_entry)];
+    
+    myfile.read((char*)&dir_entries, BLOCK_SIZE);
+
+    dir_entry file_to_read;
+
+    // Find file to read
+    for(int i = 0; i < (BLOCK_SIZE / sizeof(dir_entry); i++) {
+        if(strcmp(filepath, dir_entries[i]) == 0) {
+            file_to_read = dir_entries[i]; 
+        }        
+    }
+
+    if(file_to_read == NULL) {
+        std::cout << "Can´t read file: " << filepath << std::endl; 
+        return 1;
+    }
+
+    // Read file contents
+    // TODO make data capable to store more than 1 disk block.
+    char data[BLOCK_SIZE];
+    int16_t tmp_pat = file_to_read.first_blk; 
+
+    while(tmp_pat != -1) {
+        myfile.seekp(BLOCK_SIZE * tmp_pat);
+        // TODO maybe only read file contents (use file_to_read.size to control)
+        myfile.read((char*)&data, BLOCK_SIZE);
+
+        myfile.seekp(tmp_pat);
+        myfile.read((char*)&tmp_pat, sizeof(int16_t)); 
+    }
+
+    // TODO print data
+
     return 0;
 }
 
