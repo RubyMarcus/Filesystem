@@ -1,6 +1,8 @@
 #include <iostream>
 #include <fstream>
 #include <cstring>
+#include <iomanip>
+#include <list>
 #include "fs.h"
 
 #define BLOCK_SIZE 4096
@@ -207,15 +209,18 @@ FS::cat(std::string filepath)
     myfile.read((char*)&dir_entries, BLOCK_SIZE);
 
     dir_entry file_to_read;
+    int found_file = 0;
 
     // Find file to read
-    for(int i = 0; i < (BLOCK_SIZE / sizeof(dir_entry); i++) {
-        if(strcmp(filepath, dir_entries[i]) == 0) {
+    for(int i = 0; i < (BLOCK_SIZE / sizeof(dir_entry)); i++) {
+        if(strcmp(filepath.c_str(), dir_entries[i].file_name) == 0) {
             file_to_read = dir_entries[i]; 
+            found_file = 1;
+            break;
         }        
     }
 
-    if(file_to_read == NULL) {
+    if(found_file == 0) {
         std::cout << "Can´t read file: " << filepath << std::endl; 
         return 1;
     }
@@ -236,6 +241,9 @@ FS::cat(std::string filepath)
 
     // TODO print data
 
+
+    myfile.close();
+
     return 0;
 }
 
@@ -243,7 +251,46 @@ FS::cat(std::string filepath)
 int
 FS::ls()
 {
+    dir_entry dir_entries[BLOCK_SIZE / sizeof(dir_entry)];
+    
+    std::fstream myfile("diskfile.bin", std::ios::out | std::ios::in  | std::ios::binary);
+
+    myfile.seekp(0);
+    myfile.read((char*)&dir_entries, BLOCK_SIZE);
+
+    std::list<dir_entry> content;
+
+    for(int i = 0; i < (BLOCK_SIZE / sizeof(dir_entry)); i++) {
+        //std::cout << "Content: " << dir_entries[i].file_name << std::endl;
+        //std::cout << "Size: " << dir_entries[i].size << std::endl;
+        //std::cout << "Pat: " << dir_entries[i].first_blk << std::endl;
+
+        if(dir_entries[i].first_blk != 0) {
+            content.push_back(dir_entries[i]);
+        }
+    }
+   
+    // 
+    std::cout << "name" << std::setw(10) << "size" << std::endl;
+    for(std::list<dir_entry>::iterator it = content.begin(); it != content.end(); it++) {
+        std::cout << std::left << std::setw(10) << (*it).file_name;
+        std::cout << std::right << (*it).size << std::endl; 
+       
+    } 
+    
+    
+    /*
+    for(int i = 0; i < content.size(); i++) {
+        std::cout << "Content: " << content[i].file_name << std::endl;
+        std::cout << "Size: " << content[i].size << std::endl;
+        std::cout << "Pat: " << content[i].first_blk << std::endl;
+    }
+    */
+
     std::cout << "FS::ls()\n";
+
+    myfile.close();
+
     return 0;
 }
 
