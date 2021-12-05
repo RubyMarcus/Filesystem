@@ -17,6 +17,30 @@ FS::~FS()
 
 }
 
+// utils
+
+std::pair<dir_entry, bool> find_file(std::string filepath) {
+    std::fstream myfile("diskfile.bin", std::ios::out | std::ios::in  | std::ios::binary);
+
+    dir_entry file;
+    dir_entry d_entries[BLOCK_SIZE / sizeof(dir_entry)];
+    
+    myfile.seekp(0); // dunno if this is neccessary... we prob already start at the beginning
+    myfile.read((char*)&d_entries, BLOCK_SIZE);
+
+    bool found_file = false;
+
+    for(int i = 0; i < (BLOCK_SIZE / sizeof(dir_entry)); i++) {
+        if(strcmp(filepath.c_str(), d_entries[i].file_name)) {
+            file = d_entries[i];
+            found_file = true;
+            break;
+        }
+    }
+
+    return std::make_pair(file, found_file);
+}
+
 // formats the disk, i.e., creates an empty file system
 int
 FS::format()
@@ -251,6 +275,7 @@ FS::cat(std::string filepath)
 int
 FS::ls()
 {
+    // TODO Handle current directory, pwd, instead of just root dict
     dir_entry dir_entries[BLOCK_SIZE / sizeof(dir_entry)];
     
     std::fstream myfile("diskfile.bin", std::ios::out | std::ios::in  | std::ios::binary);
@@ -300,6 +325,14 @@ int
 FS::cp(std::string sourcepath, std::string destpath)
 {
     std::cout << "FS::cp(" << sourcepath << "," << destpath << ")\n";
+
+    // Find file to copy
+    auto t = find_file(sourcepath);
+
+    std::cout << std::get<1>(t) << std::endl;
+
+
+
     return 0;
 }
 
