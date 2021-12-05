@@ -31,7 +31,7 @@ std::pair<dir_entry, bool> find_file(std::string filepath) {
     bool found_file = false;
 
     for(int i = 0; i < (BLOCK_SIZE / sizeof(dir_entry)); i++) {
-        if(strcmp(filepath.c_str(), d_entries[i].file_name)) {
+        if(strcmp(filepath.c_str(), d_entries[i].file_name) == 0) {
             file = d_entries[i];
             found_file = true;
             break;
@@ -330,8 +330,8 @@ FS::cp(std::string sourcepath, std::string destpath)
     auto t = find_file(sourcepath);
 
     std::cout << std::get<1>(t) << std::endl;
-
-
+    dir_entry file = std::get<0>(t);
+    std::cout << file.file_name << std::endl;
 
     return 0;
 }
