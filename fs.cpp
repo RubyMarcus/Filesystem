@@ -2,6 +2,7 @@
 #include <fstream>
 #include <cstring>
 #include <iomanip>
+#include <cmath>
 #include <list>
 #include "fs.h"
 
@@ -18,9 +19,9 @@ FS::~FS()
 }
 
 // utils
-
 std::pair<dir_entry, bool> find_file(std::string filepath) {
     std::fstream myfile("diskfile.bin", std::ios::out | std::ios::in  | std::ios::binary);
+    // TODO Handle: can't open file
 
     dir_entry file;
     dir_entry d_entries[BLOCK_SIZE / sizeof(dir_entry)];
@@ -39,6 +40,68 @@ std::pair<dir_entry, bool> find_file(std::string filepath) {
     }
 
     return std::make_pair(file, found_file);
+}
+
+std::list<uint16_t> find_empty_fat_block(int amount) {
+    // Read FAT and return an integer that represent an empty FAT entry
+    std::fstream myfile("diskfile.bin", std::ios::out | std::ios::in  | std::ios::binary);
+    // TODO Handle: can't open file
+
+    //if(!myfile) {
+    //	std::cout << "Cannot open file!" << std::endl;
+	//    return 1;
+    //}
+
+    int16_t load_f_entries[BLOCK_SIZE/2];
+    std::list<uint16_t> f_pointers;
+
+    myfile.seekp(BLOCK_SIZE);
+    myfile.read((char*)&load_f_entries, sizeof(int16_t) * (BLOCK_SIZE / 2));
+    
+    // We need to know the FAT BEFORE so we can link it to the new FAT!
+    int16_t tmp_fat_before = 0;
+
+    // TODO: Handle files that are larger than 1 disk block, return multiple FAT pointers?
+    for (int i = 0; i < BLOCK_SIZE/2; i++) {
+        //std::cout << "Fat entry: " << i << " With number: " << load_f_entries[i] << std::endl;
+        if (load_f_entries[i] == 0) {
+
+           // TODO maybe find a more effective solution?
+           if(f_pointers.size() == 0) {
+               // First fat block
+               tmp_fat_before = i;
+               f_pointers.push_back(i);
+               load_f_entries[i] = -1;           
+               
+               if(f_pointers.size() == amount) {
+                    // In the case we only need 1 block
+                    break;
+               }
+               continue;
+           } else if (f_pointers.size() != amount) {
+               tmp_fat_before = i;
+               f_pointers.push_back(i);
+               load_f_entries[i] = -1;
+               load_f_entries[tmp_fat_before] = i;
+               tmp_fat_before = i;
+               continue;
+           } else {
+               // We found all fat blocks we need!
+               break;
+           }
+        }
+    }
+
+    if (f_pointers.size() != amount) {
+        std::cout << "ERROR: FULL FAT" << std::endl;
+    } else {  
+        // Write FAT block 
+        myfile.seekp(BLOCK_SIZE);
+        myfile.write((char*)&load_f_entries, BLOCK_SIZE);
+    }
+
+    myfile.close();
+    return f_pointers;
 }
 
 // formats the disk, i.e., creates an empty file system
@@ -97,47 +160,6 @@ FS::format()
     return 0;
 }
 
-
-int find_empty_fat_block() {
-    // Read FAT and return an integer that represent an empty FAT entry
-    std::fstream myfile("diskfile.bin", std::ios::out | std::ios::in  | std::ios::binary);
-    if(!myfile) {
-    	std::cout << "Cannot open file!" << std::endl;
-	    return 1;
-    }
-
-    int tmp_fat_pointer = -1;
-
-    int16_t load_f_entries[BLOCK_SIZE/2];
-
-    myfile.seekp(BLOCK_SIZE);
-    myfile.read((char*)&load_f_entries, sizeof(int16_t) * (BLOCK_SIZE / 2));
-    
-
-    // TODO: Handle files that are larger than 1 disk block, return multiple FAT pointers?
-    for (int i = 0; i < BLOCK_SIZE/2; i++) {
-        //std::cout << "Fat entry: " << i << " With number: " << load_f_entries[i] << std::endl;
-        if (load_f_entries[i] == 0) {
-           tmp_fat_pointer = i;
-           load_f_entries[i] = -1; 
-           break;
-        }
-    }
-
-    if (tmp_fat_pointer == -1) {
-        std::cout << "ERROR: FULL FAT" << std::endl;
-        return 1;
-    } 
-    
-    // Write to FAT
-    myfile.seekp(BLOCK_SIZE);
-    myfile.write((char*)&load_f_entries, BLOCK_SIZE);
-
-    myfile.close();
-
-    return tmp_fat_pointer;
-}
-
 // create <filepath> creates a new file on the disk, the data content is
 // written on the following rows (ended with an empty row)
 int
@@ -157,7 +179,15 @@ FS::create(std::string filepath)
     //new_file.file_name[0] = "h"; 
     strcpy(new_file.file_name, filepath.c_str());
     new_file.size = 0; // Size is zero since we dont have any data? However, we probably should find a starting disk block.
-    new_file.first_blk = find_empty_fat_block();
+    
+    float nr_blocks = 1;
+    if(new_file.size != 0) {
+        nr_blocks = std::ceil(new_file.size / BLOCK_SIZE);
+    }
+    
+    std::list<uint16_t> f_entries = find_empty_fat_block(static_cast<int>(nr_blocks));
+
+    new_file.first_blk = f_entries.front();
     new_file.type = 0; // file = 0, directory = 1
     new_file.access_rights = 0x06; // TODO : Check this later
 
@@ -183,6 +213,7 @@ FS::create(std::string filepath)
         if(d_entries[i].first_blk == 0) {
             // We found empty dir block.
             tmp_empty_block = i;
+            d_entries[i] = new_file; 
             break;
         }
     }
@@ -194,8 +225,8 @@ FS::create(std::string filepath)
         return 1;
     }
 
-    myfile.seekp(tmp_empty_block * (BLOCK_SIZE / sizeof(dir_entry)));
-    myfile.write((char*)&new_file, sizeof(dir_entry));
+    myfile.seekp(0);
+    myfile.write((char*)&new_file, BLOCK_SIZE);
 
     std::cout << "Filename block: " << new_file.file_name << std::endl;
 
@@ -215,7 +246,6 @@ FS::create(std::string filepath)
     */
 
     myfile.close();
-
     return 0;
 }
 
@@ -264,7 +294,6 @@ FS::cat(std::string filepath)
     }
 
     // TODO print data
-
 
     myfile.close();
 
@@ -328,11 +357,57 @@ FS::cp(std::string sourcepath, std::string destpath)
 
     // Find file to copy
     auto t = find_file(sourcepath);
+    bool success = std::get<1>(t);
 
-    std::cout << std::get<1>(t) << std::endl;
-    dir_entry file = std::get<0>(t);
-    std::cout << file.file_name << std::endl;
+    if(!success) {
+        std::cout << "ERROR: Could not find file! -> " << sourcepath << std::endl;
+        return 1;
+    }
 
+    dir_entry file_to_cpy = std::get<0>(t);
+
+    // OK, file found, now copy();
+    // TODO How do we handle if we copy to same dir?
+    // TODO What happens if a file with same filename already exist in other directory
+    
+    bool empty_file = true;
+    double nr_disks = 1;
+    
+    // Create new file 
+    dir_entry new_file;
+    // new_file.file_name = file_to_cpy.file_name; // TODO Change name if filename already exist in directory
+    strcpy(new_file.file_name, file_to_cpy.file_name);
+
+    // Calculate how many disk blocks we need! TODO Can size ever be 0? If so, handle this?
+    if(file_to_cpy.size != 0)
+    {
+        double nr_disks = std::ceil(file_to_cpy.size / BLOCK_SIZE);
+        empty_file = false;
+    }
+    
+    std::list<uint16_t> f_entries = find_empty_fat_block(static_cast<int>(f_entries));
+
+    new_file.first_blk = f_entries.front();
+    new_file.size = file_to_cpy.size;
+    new_file.type = file_to_cpy.type;
+    new_file.access_rights = file_to_cpy.access_rights;
+
+    if(new_file.first_blk == -1) {
+        std::cout << "Couldn't find empty fat block" << std::endl;
+        return 1;
+    }
+    
+    std::fstream myfile("diskfile.bin", std::ios::out | std::ios::in  | std::ios::binary);
+
+    if (!empty_file) {
+        // TODO: Start copy disk blocks 
+        for(std::list<uint16_t>::iterator it = f_entries.begin(); it != f_entries.end(); it++) {
+            myfile.seekp(it * BLOCK_SIZE);
+            // Write data
+        }
+    }        
+    
+    myfile.close();
     return 0;
 }
 
@@ -342,6 +417,12 @@ int
 FS::mv(std::string sourcepath, std::string destpath)
 {
     std::cout << "FS::mv(" << sourcepath << "," << destpath << ")\n";
+
+    // First of all we need to find the to move.
+    
+    
+    
+
     return 0;
 }
 
