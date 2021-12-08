@@ -1,5 +1,6 @@
 #include <iostream>
 #include <cstdint>
+#include <list>
 #include "disk.h"
 
 #ifndef __FS_H__
@@ -15,10 +16,6 @@
 #define READ 0x04
 #define WRITE 0x02
 #define EXECUTE 0x01
-
-struct fat_entry {
-    uint16_t pointer;
-};
 
 struct dir_entry {
     char file_name[56]; // name of the file / sub-directory
@@ -37,6 +34,10 @@ private:
 public:
     FS();
     ~FS();
+    
+    std::pair<bool, std::list<uint16_t>> find_empty_dir_block(std::string pathname, uint32_t size, int type, int nr_blocks);
+    std::list<uint16_t> find_empty_fat_block(int amount);
+
     // formats the disk, i.e., creates an empty file system
     int format();
     // create <filepath> creates a new file on the disk, the data content is
