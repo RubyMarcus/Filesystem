@@ -177,12 +177,14 @@ FS::find_empty_dir_block(std::string pathname, uint32_t size, int type, int nr_b
 
     for(int i = 0; i < (BLOCK_SIZE / sizeof(dir_entry)); i++) {
         std::string tmp(d_entries[i].file_name);
-
-        if(tmp.size() == 0) {
-            d_entries[i] = new_dir; 
-            success = true;
-            break;
-        } 
+        if(strcmp(d_entries[i].file_name, "") == 0) {
+        
+            if(tmp.size() == 0) {
+                d_entries[i] = new_dir; 
+                success = true;
+                break;
+            } 
+        }
     }
 
     // TODO change this later if sub-dir is goal
@@ -383,10 +385,13 @@ FS::cat(std::string filepath)
     bool success = std::get<1>(t);
     
     if(!success) {
-        std::cout << "ERROR: could find file " << filepath << std::endl;
+        std::cout << "ERROR: couldn't find file " << filepath << std::endl;
         return 1;
     }
-    
+
+    if(file.type == 1) {
+        std::cout << "ERROR: can't read dict" << std::endl;
+    }
     
     uint16_t f_entries[BLOCK_SIZE / sizeof(uint16_t)];
 
@@ -450,7 +455,7 @@ FS::ls()
         }
     }
    
-    std::cout << "name" << std::setw(10) << "type" << std::setw(10) << "size" << std::endl;
+    std::cout << "name" << std::setw(20) << "type" << std::setw(28) << "accessrights" << std::setw(20) << "size" << std::endl;
     for(std::list<dir_entry>::iterator it = content.begin(); it != content.end(); it++) {
         std::string type_name;
 
@@ -459,9 +464,29 @@ FS::ls()
         } else {
             type_name = "dir";
         }
+    
+        std::string access_rights;
 
-        std::cout << std::left << std::setw(10) << (*it).file_name;
-        std::cout << std::setw(10) << type_name;
+        if((*it).access_rights == (0x04 | 0x2)) {
+            access_rights = "rw-";
+        } else if ((*it).access_rights == (0x01)) {
+            access_rights = "--x";
+        } else if ((*it).access_rights == (0x02)) {
+            access_rights = "-w-";
+        } else if ((*it).access_rights == (0x04)) {
+            access_rights = "r--";
+        } else if ((*it).access_rights == (0x01 | 0x02)) {
+            access_rights = "-wx";
+        } else if ((*it).access_rights == (0x04 | 0x01)) {
+            access_rights = "r-x";
+        } else {
+            access_rights = "rwx";
+        }
+
+        std::cout << std::left << std::setw(20) << (*it).file_name;
+        std::cout << std::setw(20) << type_name << std::setw(28) << access_rights;
+
+        //std::cout << std::setw(20) << access_rights;
         std::cout << std::right << (*it).size << std::endl; 
        
     } 
@@ -586,6 +611,26 @@ FS::mv(std::string sourcepath, std::string destpath)
         return 1;
     }
 
+    if(file_t.type == 1) {
+        std::cout << "ERROR: Can't move directory." << std::endl;
+        return 1;
+    }
+
+
+    
+    auto source_dir = find_current_directory(complete_path, false);
+    bool success_source_dir = std::get<1>(t); 
+
+    uint16_t source_position = std::get<0>(source_dir);
+
+    std::cout << "Source position " << source_position << std::endl;
+    
+    if(!success_source_dir) {
+        std::cout << "ERROR: Invalid path" << std::endl; 
+        return 1;
+    }
+
+
     // We found the file that we need to move
     // Now lets check that the destpath exists
     // TODO Now we only handle path in root folder. need to handle etc dir3/filename
@@ -598,42 +643,72 @@ FS::mv(std::string sourcepath, std::string destpath)
 
     if(success_g) {
         std::cout << "ERROR: There already exists a file with that name " << destpath << std::endl;
+        return 1;
     }
 
-    //dir_entry move_file = std::get<0>(t);
-    //strcpy(move_file.file_name, destpath.c_str());
- 
-    dir_entry d_entries[BLOCK_SIZE / sizeof(dir_entry)];
 
     // TODO Handle correct path!
 
-    // check that path is valid
-    auto curr_dir = find_current_directory(complete_path, false);
-    bool success_curr_dir = std::get<1>(t); 
+   // check that path is valid
+    auto dest_dir = find_current_directory(complete_path, true);
+    bool success_dest_dir = std::get<1>(dest_dir); 
     
-    if(!success_curr_dir) {
+    if(!success_dest_dir) {
         std::cout << "ERROR: Invalid path" << std::endl; 
         return 1;
     }
 
-    uint16_t position = std::get<0>(curr_dir);
-    
+    uint16_t dest_position = std::get<0>(dest_dir);
 
-    disk.read(position, (uint8_t*)d_entries);
+    std::cout << "Dest position " << dest_position << std::endl;
 
-    auto split = split_file_name(sourcepath);
-    std::string name = std::get<0>(split);
-     
+    auto split_source = split_file_name(sourcepath);
+    std::string name_source = std::get<0>(split_source);
+
+    std::cout << "Source name " << name_source << std::endl;
+
+    // Maybe not do this if dest was unsuccessful
+    if(source_position != dest_position) {
+        // If not same folder remove dir_entry from source
+        dir_entry d_entries_source[BLOCK_SIZE / sizeof(dir_entry)];
+        disk.read(source_position, (uint8_t*)d_entries_source);
+
+        for(int i = 0; i < (BLOCK_SIZE / sizeof(dir_entry)); i++) {
+            if(strcmp(d_entries_source[i].file_name, name_source.c_str()) == 0) {
+                strcpy(d_entries_source[i].file_name, "");
+                d_entries_source[i].first_blk = 0;
+                d_entries_source[i].size = 0;
+            }
+        }
+        disk.write(source_position, (uint8_t*)d_entries_source);
+    }
+
+    dir_entry d_entries_dest[BLOCK_SIZE / sizeof(dir_entry)];
+    disk.read(dest_position, (uint8_t*)d_entries_dest);
+
+    auto split_dest = split_file_name(destpath);
+    std::string name_dest = std::get<0>(split_dest);
     
     for(int i = 0; i < (BLOCK_SIZE / sizeof(dir_entry)); i++) {
-        if(strcmp(d_entries[i].file_name, file_t.file_name) == 0) {
-            strcpy(d_entries[i].file_name, name.c_str());
-            break;
+        if(source_position == dest_position) {
+            if(strcmp(d_entries_dest[i].file_name, name_source.c_str()) == 0) {
+                strcpy(file_t.file_name, name_dest.c_str());
+                d_entries_dest[i] = file_t;
+                break;
+            }
+        } else {
+            if(strcmp(d_entries_dest[i].file_name, "") == 0) {
+                if(d_entries_dest[i].first_blk == 0) {
+                    strcpy(file_t.file_name, name_dest.c_str());
+                    d_entries_dest[i] = file_t;
+                    break;
+                }
+            }
         }
     } 
 
     // TODO Handle correct path!
-    disk.write(position, (uint8_t*)d_entries);
+    disk.write(dest_position, (uint8_t*)d_entries_dest);
     
     // So now we have changed the name of the file.
     // TODO we need to handle if there is different katalogs
@@ -646,6 +721,83 @@ int
 FS::rm(std::string filepath)
 {
     std::cout << "FS::rm(" << filepath << ")\n";
+
+    std::string complete_path = path_pwd + filepath;
+
+    auto g = find_file(complete_path);
+    bool success_g = std::get<1>(g);
+    dir_entry file_g = std::get<0>(g);
+
+    if(!success_g) {
+        std::cout << "ERROR: Could not find file! -> " << complete_path << std::endl;
+        return 1;
+    }
+    
+    auto dir_g = find_current_directory(complete_path, false);
+    bool success_dir_g = std::get<1>(dir_g); 
+    
+    if(!success_dir_g) {
+        std::cout << "ERROR: Invalid path" << std::endl; 
+        return 1;
+    }
+
+    uint16_t position_g = std::get<0>(dir_g);
+
+    int nr_files = 0;
+
+    // Check if directory is empty
+    if(file_g.type == 1) {
+        dir_entry d_entries_check[BLOCK_SIZE / sizeof(dir_entry)];
+        disk.read(file_g.first_blk, (uint8_t*)d_entries_check);
+
+        for(int i = 1; i < (BLOCK_SIZE / sizeof(dir_entry)); i++) {
+            if(strcmp(d_entries_check[i].file_name, "") != 0) {
+                if(d_entries_check[i].first_blk != 0) {
+                    ++nr_files;
+                }
+            }
+        }
+    }
+
+    if (nr_files != 0) {
+        std::cout << "ERROR: can't delete directory with files" << std::endl;
+        return 1;
+    }
+
+    auto split = split_file_name(complete_path);
+    std::string name = std::get<0>(split);
+
+    dir_entry d_entries[BLOCK_SIZE / sizeof(dir_entry)];
+    
+    disk.read(position_g, (uint8_t*)d_entries);
+    
+    for(int i = 0; i < (BLOCK_SIZE / sizeof(dir_entry)); i++) {
+        if(strcmp(d_entries[i].file_name, name.c_str()) == 0) {
+            strcpy(d_entries[i].file_name, "");
+            d_entries[i].first_blk = 0;
+            d_entries[i].size = 0;
+            break;
+        }        
+    }
+
+    disk.write(position_g, (uint8_t*)d_entries);
+
+    // We need to free PAT as well.
+    uint16_t f_entries[BLOCK_SIZE / sizeof(uint16_t)];
+
+    disk.read(1, (uint8_t*)f_entries);
+
+    int16_t tmp = file_g.first_blk;
+
+    while(tmp != -1) {
+        int16_t y = f_entries[tmp];
+        f_entries[tmp] = 0;
+        tmp = y;
+    }
+
+    f_entries[tmp] = 0;
+
+    disk.write(1, (uint8_t*)f_entries);
     return 0;
 }
 
@@ -656,9 +808,11 @@ FS::append(std::string filepath1, std::string filepath2)
 {
     std::cout << "FS::append(" << filepath1 << "," << filepath2 << ")\n";
 
+    std::string complete_path = path_pwd + filepath1;
+
     // First of all we check that filepath1 exists 
     // TODO: Handle if file is in other katalogs
-    auto t = find_file(filepath1);
+    auto t = find_file(complete_path);
     bool success_t = std::get<1>(t);
     dir_entry file_t = std::get<0>(t);
 
@@ -672,9 +826,11 @@ FS::append(std::string filepath1, std::string filepath2)
         return 1;
     }
 
+    complete_path = path_pwd + filepath2;
+
     // Found filepath1
     // Check filepath2
-    auto g = find_file(filepath2);
+    auto g = find_file(complete_path);
     bool success_g = std::get<1>(g);
     dir_entry file_g = std::get<0>(g);
 
@@ -688,6 +844,16 @@ FS::append(std::string filepath1, std::string filepath2)
         return 1;
     }
     
+    auto dir_g = find_current_directory(complete_path, true);
+    bool success_dir_g = std::get<1>(dir_g); 
+    
+    if(!success_dir_g) {
+        std::cout << "ERROR: Invalid path" << std::endl; 
+        return 1;
+    }
+
+    uint16_t position_g = std::get<0>(dir_g);
+
     // We need to find the last PAT in filepath2 and then change the 
     // EOF to the first PAT in filepath1
     // TODO Should the size for filepath 2 increase?
@@ -833,7 +999,7 @@ FS::append(std::string filepath1, std::string filepath2)
 
     dir_entry d_entries[BLOCK_SIZE / sizeof(dir_entry)];
     // TODO Handle sub directories!
-    disk.read(0, (uint8_t*)d_entries);
+    disk.read(position_g, (uint8_t*)d_entries);
     
     for(int i = 0; i < (BLOCK_SIZE / sizeof(dir_entry)); i++) {
         if(strcmp(file_g.file_name, d_entries[i].file_name) == 0) {
@@ -842,7 +1008,7 @@ FS::append(std::string filepath1, std::string filepath2)
     }
 
     // TODO Handle sub directories
-    disk.write(0, (uint8_t*)d_entries);
+    disk.write(position_g, (uint8_t*)d_entries);
 
     return 0;
 }
@@ -854,8 +1020,10 @@ FS::mkdir(std::string dirpath)
 {
     std::cout << "FS::mkdir(" << dirpath << ")\n";
 
+    std::string complete_path = path_pwd + dirpath;
+    
     // Check that a file/dir with that name doesn't exists.
-    auto file_t = find_file(dirpath);
+    auto file_t = find_file(complete_path);
     bool success_t = std::get<1>(file_t);
 
     if(success_t) {
@@ -863,7 +1031,7 @@ FS::mkdir(std::string dirpath)
         return 1;
     }
 
-    auto dir_t = find_empty_dir_block(dirpath, 0, 1, 1);
+    auto dir_t = find_empty_dir_block(complete_path, 0, 1, 1);
     bool dir_success = std::get<0>(dir_t);
     std::list<uint16_t> f_entries = std::get<1>(dir_t); 
 
@@ -1025,5 +1193,34 @@ int
 FS::chmod(std::string accessrights, std::string filepath)
 {
     std::cout << "FS::chmod(" << accessrights << "," << filepath << ")\n";
+
+    std::string complete_path = path_pwd + filepath;
+
+    auto g = find_file(complete_path);
+    bool success_g = std::get<1>(g);
+    dir_entry file_g = std::get<0>(g);
+
+    if(!success_g) {
+        std::cout << "ERROR: Could not find file! -> " << complete_path << std::endl;
+        return 1;
+    }
+
+    if(file_g.type == 1) {
+        std::cout << "ERROR: Can't append directory." << std::endl;
+        return 1;
+    }
+    
+    auto dir_g = find_current_directory(complete_path, true);
+    bool success_dir_g = std::get<1>(dir_g); 
+    
+    if(!success_dir_g) {
+        std::cout << "ERROR: Invalid path" << std::endl; 
+        return 1;
+    }
+
+    uint16_t position_g = std::get<0>(dir_g);
+
+
+
     return 0;
 }
