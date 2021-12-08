@@ -32,6 +32,11 @@ std::pair<std::string, std::string> split_file_name(const std::string& str) {
     return std::make_pair(str.substr(found + 1), str.substr(0,found + 1));
 }
 
+bool permissions(uint8_t access_right) {
+    
+}
+
+
 std::pair<uint16_t, bool>
 FS::find_current_directory(std::string path, bool add) {
     size_t pos = 0;
@@ -392,6 +397,13 @@ FS::cat(std::string filepath)
     if(file.type == 1) {
         std::cout << "ERROR: can't read dict" << std::endl;
     }
+
+    // Check if we have permissions to read
+    
+    if(file.access_rights != 0x04 || file.access_rights != (0x02 | 0x04) || file.access_rights == (0x04 | 0x01)) {
+        std::cout << "ERROR: no permission to read file" << std::endl;
+        return 1;        
+    }
     
     uint16_t f_entries[BLOCK_SIZE / sizeof(uint16_t)];
 
@@ -524,6 +536,12 @@ FS::cp(std::string sourcepath, std::string destpath)
 
     dir_entry file_to_cpy = std::get<0>(t);
 
+    if(file.access_rights != 0x04 || file.access_rights != (0x02 | 0x04) || file.access_rights == (0x04 | 0x01)) {
+        std::cout << "ERROR: no permission to read file" << std::endl;
+        return 1;        
+    }
+
+
     // OK, file found, now copy();
     // TODO How do we handle if we copy to same dir?
     // TODO What happens if a file with same filename already exist in other directory
@@ -616,6 +634,10 @@ FS::mv(std::string sourcepath, std::string destpath)
         return 1;
     }
 
+    if(file.access_rights != 0x04 || file.access_rights != (0x02 | 0x04) || file.access_rights == (0x04 | 0x01)) {
+        std::cout << "ERROR: no permission to read file" << std::endl;
+        return 1;        
+    }
 
     
     auto source_dir = find_current_directory(complete_path, false);
@@ -733,6 +755,12 @@ FS::rm(std::string filepath)
         return 1;
     }
     
+    if(file.access_rights != 0x04 || file.access_rights != (0x02 | 0x04) || file.access_rights == (0x04 | 0x01)) {
+        std::cout << "ERROR: no permission to read file" << std::endl;
+        return 1;        
+    }
+
+    
     auto dir_g = find_current_directory(complete_path, false);
     bool success_dir_g = std::get<1>(dir_g); 
     
@@ -825,6 +853,12 @@ FS::append(std::string filepath1, std::string filepath2)
         std::cout << "ERROR: Can't append directory." << std::endl;
         return 1;
     }
+    
+    if(file_t.access_rights != (0x04 | 0x02) ||  file_t.access_rights != (0x04 | 0x02 | 0x01)) {
+        std::cout << "ERROR: no permission to read or write file" << std::endl;
+        return 1;        
+    }
+
 
     complete_path = path_pwd + filepath2;
 
@@ -1205,11 +1239,6 @@ FS::chmod(std::string accessrights, std::string filepath)
         return 1;
     }
 
-    if(file_g.type == 1) {
-        std::cout << "ERROR: Can't append directory." << std::endl;
-        return 1;
-    }
-    
     auto dir_g = find_current_directory(complete_path, true);
     bool success_dir_g = std::get<1>(dir_g); 
     
@@ -1220,7 +1249,18 @@ FS::chmod(std::string accessrights, std::string filepath)
 
     uint16_t position_g = std::get<0>(dir_g);
 
+    dir_entry d_entries[BLOCK_SIZE / sizeof(dir_entry)]
 
+    disk.read(d_entries, (uint8_t*)d_entries);
+
+    auto split = split_file_name(complete_path);
+    std::string name = std::get<0>(split);
+
+    std::cout << "Filename: " << split << std::endl;
+
+    for(int i = 0; i < (BLOCK_SIZE / sizeof(dir_entry)); i++) {
+            
+    }
 
     return 0;
 }
