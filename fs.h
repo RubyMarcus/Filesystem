@@ -67,6 +67,7 @@ public:
     int cd(std::string dirpath);
     // pwd prints the full path, i.e., from the root directory, to the current
     // directory, including the currect directory name
+    uint16_t find_current_directory();
     int pwd();
 
     // chmod <accessrights> <filepath> changes the access rights for the

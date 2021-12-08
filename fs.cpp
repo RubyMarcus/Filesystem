@@ -21,6 +21,7 @@ FS::~FS()
 }
 
 std::string path_pwd = "";
+int current_position = 0;
 
 std::list<uint16_t> find_empty_fat_block(int amount); 
 
@@ -39,7 +40,12 @@ std::pair<dir_entry, bool> find_file(std::string filepath) {
     bool found_file = false;
 
     for(int i = 0; i < (BLOCK_SIZE / sizeof(dir_entry)); i++) {
-        if(strcmp(filepath.c_str(), d_entries[i].file_name) == 0) {
+
+        if(strcmp(d_entries[i].file_name, filepath.c_str()) == 0) {
+            std::cout << d_entries[i].file_name << std::endl;
+            std::cout << filepath << std::endl;
+            
+
             file = d_entries[i];
             found_file = true;
             break;
@@ -76,7 +82,9 @@ FS::find_empty_dir_block(std::string pathname, uint32_t size, int type, int nr_b
     new_dir.access_rights = 0x06;
 
     for(int i = 0; i < (BLOCK_SIZE / sizeof(dir_entry)); i++) {
-        if(d_entries[i].first_blk == 0) {
+        std::string tmp(d_entries[i].file_name);
+
+        if(tmp.size() == 0) {
             d_entries[i] = new_dir; 
             success = true;
             break;
@@ -355,14 +363,13 @@ int
 FS::ls()
 {
    
-    // TODO Do not print (..) directories
-    // TODO Handle current directory, pwd, instead of just root dict
-    dir_entry dir_entries[BLOCK_SIZE / sizeof(dir_entry)];
-    
-    std::fstream myfile("diskfile.bin", std::ios::out | std::ios::in  | std::ios::binary);
+    // TODO Do not print (..) directories??
+    dir_entry d_entries[BLOCK_SIZE / sizeof(dir_entry)];
 
-    myfile.seekp(0);
-    myfile.read((char*)&dir_entries, BLOCK_SIZE);
+    uint16_t position = find_current_directory();
+    std::cout << position << std::endl;
+
+    disk.read(position, (uint8_t*)d_entries);
 
     std::list<dir_entry> content;
 
@@ -371,8 +378,12 @@ FS::ls()
         //std::cout << "Size: " << dir_entries[i].size << std::endl;
         //std::cout << "Pat: " << dir_entries[i].first_blk << std::endl;
 
-        if(dir_entries[i].first_blk != 0) {
-            content.push_back(dir_entries[i]);
+        std::string tmp(d_entries[i].file_name);
+
+        if(tmp.size() != 0) {
+            if(d_entries[i].type == 0 || d_entries[i].type == 1) {
+                content.push_back(d_entries[i]);
+            }
         }
     }
    
@@ -401,8 +412,6 @@ FS::ls()
     */
 
     std::cout << "FS::ls()\n";
-
-    myfile.close();
 
     return 0;
 }
@@ -515,16 +524,31 @@ FS::mv(std::string sourcepath, std::string destpath)
     auto g = find_file(destpath);
     bool success_g = std::get<1>(g);
 
-    if(!success_g) {
-        std::cout << "ERROR: There already exists a file with that name" << destpath << std::endl;
+    if(success_g) {
+        std::cout << "ERROR: There already exists a file with that name " << destpath << std::endl;
     }
 
-    dir_entry move_file = std::get<0>(t);
-    strcpy(move_file.file_name, destpath.c_str());
-   
+    //dir_entry move_file = std::get<0>(t);
+    //strcpy(move_file.file_name, destpath.c_str());
+ 
+    dir_entry d_entries[BLOCK_SIZE / sizeof(dir_entry)];
+
+    // TODO Handle correct path!
+    disk.read(0, (uint8_t*)d_entries);
+     
+    
+    for(int i = 0; i < (BLOCK_SIZE / sizeof(dir_entry)); i++) {
+        if(strcmp(d_entries[i].file_name, sourcepath.c_str()) == 0) {
+            strcpy(d_entries[i].file_name, destpath.c_str());
+            break;
+        }
+    } 
+
+    // TODO Handle correct path!
+    disk.write(0, (uint8_t*)d_entries);
+    
     // So now we have changed the name of the file.
     // TODO we need to handle if there is different katalogs
-    
 
     return 0;
 }
@@ -569,38 +593,158 @@ FS::append(std::string filepath1, std::string filepath2)
     // We need to find the last PAT in filepath2 and then change the 
     // EOF to the first PAT in filepath1
     // TODO Should the size for filepath 2 increase?
-    std::fstream myfile("diskfile.bin", std::ios::out | std::ios::in  | std::ios::binary);
 
     uint16_t f_entries[BLOCK_SIZE / sizeof(uint16_t)];
+    disk.read(1, (uint8_t*)f_entries);
 
-    myfile.seekp(BLOCK_SIZE);
-    myfile.read((char*)&f_entries, BLOCK_SIZE);
+    std::list<uint16_t> f_t_entries;
+    int16_t tmp_t = file_t.first_blk;
 
-    int16_t tmp = f_entries[file_g.first_blk];
-    bool end_pat = false;
+    // Find PAT's for first file
+    while(tmp_t != -1) {
+        f_t_entries.push_back(tmp_t);
+        tmp_t = f_entries[tmp_t];
+    }   
 
-    uint16_t pat_loc;
+    std::list<uint16_t> f_g_entries;
+    int16_t tmp_g = file_g.first_blk;
 
-    if(tmp == -1) {
-        end_pat = true;
-        pat_loc = file_g.first_blk;
+    // Find PAT's for second file
+    while(tmp_g != -1) {
+        f_g_entries.push_back(tmp_g);
+        tmp_g = f_entries[tmp_g];
+    }   
+
+    // Ok, first we need to calculate how much space we need!
+    // TODO Do we need to handle null-termination?
+    
+    int diskspace_left = BLOCK_SIZE - file_g.size;
+
+    char data_t[BLOCK_SIZE]; // first file
+    char data_g[BLOCK_SIZE]; // second file 
+
+    if(file_t.size <= diskspace_left) {
+        // We dont need more blocks
+        
+        auto it_t = f_t_entries.end();
+        it_t--;
+        disk.read(*it_t, (uint8_t*)data_t);
+
+        auto it_g = f_g_entries.end();
+        it_g--;
+        disk.read(*it_g, (uint8_t*)data_g);
+        
+        int y = 0;
+        for(int i = 0; i < sizeof(data_g); i++) {
+            if(i >= (file_g.size)) {
+                if(y >= file_t.size) break;
+
+                data_g[i] = data_t[y];
+                y++;
+            } 
+        }
+        
+        disk.write(*it_g, (uint8_t*)data_g);
+
+        std::cout << data_g << std::endl;
+        
     } else {
+        // We need more blocks
+        
+        // Fill first block
 
-        while(!end_pat) {
-            pat_loc = tmp;
-            tmp = f_entries[tmp];
+        // How much can we fit?
+        // How much is left in file_g
 
-            if(tmp == -1) {
-                end_pat = true;
-            }
-        } 
+        std::list<uint16_t>::iterator it_t = f_t_entries.begin();
+        disk.read(*it_t, (uint8_t*)data_t);
+
+        auto it_g = f_g_entries.end();
+        it_g--;
+        disk.read(*it_g, (uint8_t*)data_g);
+        
+        uint16_t tmp_cpy_blk = *it_g;
+
+        float size_left = file_t.size - diskspace_left;
+        float size_blk = BLOCK_SIZE;
+        
+        int nr_blocks = std::ceil(size_left / size_blk);
+        
+        std::list<uint16_t> f_new_entries = find_empty_fat_block(nr_blocks); 
+
+        // Link file_t to new fat entries
+        std::list<uint16_t>::iterator it_new = f_new_entries.begin();
+        f_entries[*it_g] = *it_new;
+
+        // Lets check that there is space left to execute append
+        if(f_new_entries.size() != nr_blocks) {
+            std::cout << "ERROR: Couldn't locate enough fat block" << std::endl;
+            return 1;
+        }
+
+        bool copying = true;
+
+        int i = file_g.size;
+        int block_iter = 0;
+
+        while(copying) {
+            int y = 0;
+            
+            // Okay, so whenever data_g becomes full then we write and clear the buffer. However,
+            // there is still data left in the data_t buffer, we need to start where we left.
+            // We start looping over data_g again then we need to know how much is left in data_t before we
+            // have to load the next segment of data. Y is representing where we are in data_t. Whenever
+            // y exceeds BLOCK_SIZE then we load next data segment.                    
+
+            for(i; i < sizeof(data_g); i++) {
+                // This will know when we have read the whole f_file 
+                if(y <= BLOCK_SIZE) {
+                    // Only for first cpy
+                    if(y >= diskspace_left) break;
+
+                    data_g[i] = data_t[y];
+                    y++;
+                } else {
+                    // Time to cpy next block;
+                    std::advance(it_t, 1);
+                    
+                    if(*it_t != -1) { 
+                        // Clear char buffer
+                        memset(data_t, 0, sizeof(data_t));
+                        disk.read(*it_t, (uint8_t*)data_t);
+                    }
+                    y = 0;
+                }
+            } 
+
+            disk.write(tmp_cpy_blk, (uint8_t*)data_g);
+            
+            if(block_iter == nr_blocks) break;
+
+            block_iter++;
+           
+            // Clear char buffer
+            memset(data_g, 0, sizeof(data_g));
+            i = 0;
+            
+            std::advance(it_new, 1);
+            tmp_cpy_blk = *it_new; 
+            diskspace_left = BLOCK_SIZE;
+        }
     }
 
-    f_entries[pat_loc] = file_t.first_blk;
-    myfile.seekp(BLOCK_SIZE);
-    myfile.write((char*)&f_entries, BLOCK_SIZE);
+    dir_entry d_entries[BLOCK_SIZE / sizeof(dir_entry)];
+    // TODO Handle sub directories!
+    disk.read(0, (uint8_t*)d_entries);
+    
+    for(int i = 0; i < (BLOCK_SIZE / sizeof(dir_entry)); i++) {
+        if(strcmp(file_g.file_name, d_entries[i].file_name) == 0) {
+            d_entries[i].size = file_g.size + file_t.size;
+        }
+    }
 
-    myfile.close();
+    // TODO Handle sub directories
+    disk.write(0, (uint8_t*)d_entries);
 
     return 0;
 }
@@ -612,14 +756,25 @@ FS::mkdir(std::string dirpath)
 {
     std::cout << "FS::mkdir(" << dirpath << ")\n";
 
-    auto t = find_empty_dir_block(dirpath, 0, 1, 1);
-    bool success = std::get<0>(t);
-    std::list<uint16_t> f_entries = std::get<1>(t); 
+    // Check that a file/dir with that name doesn't exists.
+    auto file_t = find_file(dirpath);
+    bool success_t = std::get<1>(file_t);
 
-    if(!success) {
+    if(success_t) {
+        std::cout << "ERROR: name already used!" << std::endl;
+        return 1;
+    }
+
+    auto dir_t = find_empty_dir_block(dirpath, 0, 1, 1);
+    bool dir_success = std::get<0>(dir_t);
+    std::list<uint16_t> f_entries = std::get<1>(dir_t); 
+
+    if(!dir_success) {
         std::cout << "Could not create directory: " << dirpath << std::endl;
         return 1;
     }
+
+    std::list<uint16_t>::iterator it_t = f_entries.begin();
 
     // Create sub_dir
     dir_entry sub_dir;
@@ -629,14 +784,52 @@ FS::mkdir(std::string dirpath)
     sub_dir.first_blk = 0;
     sub_dir.size = 0;   
     sub_dir.type = 1;
-    sub_dir.access_rights =0x06;
+    sub_dir.access_rights = 0x06;
 
     dir_entry d_entries[BLOCK_SIZE / sizeof(dir_entry)];
+    
+    disk.read(*it_t, (uint8_t*)d_entries);
+
     d_entries[0] = sub_dir;
+
+    std::cout << *it_t << std::endl;
+
+    disk.write(*it_t, (uint8_t*)d_entries);
 
     // Now we need to write.
 
     return 0;
+}
+
+uint16_t 
+FS::find_current_directory() {
+    size_t pos = 0;
+    uint16_t position = 0;
+
+    std::string token;
+    std::string delimiter = "/";
+
+    dir_entry d_entries[BLOCK_SIZE / sizeof(dir_entry)];
+
+    if (path_pwd.size() != 0) {
+        std::string tmp;
+        tmp = path_pwd;
+
+        while((pos = tmp.find(delimiter)) != std::string::npos) {
+            token = tmp.substr(0, pos);
+            //std::cout << token << std::endl;
+            tmp.erase(0, pos + delimiter.length());
+
+            disk.read(position ,(uint8_t*)d_entries); 
+
+            for(int i = 0; i < (BLOCK_SIZE / sizeof(dir_entry)); i++) {
+                if(strcmp(token.c_str(), d_entries[i].file_name) == 0) {
+                    position = d_entries[i].first_blk;
+                }
+            } 
+        }
+    }
+    return position;
 }
 
 // cd <dirpath> changes the current (working) directory to the directory named <dirpath>
@@ -645,43 +838,41 @@ FS::cd(std::string dirpath)
 {
     std::cout << "FS::cd(" << dirpath << ")\n";
 
-    std::string delimiter = "/";
+    uint16_t position = find_current_directory();
     size_t pos = 0;
 
-    std::fstream myfile("diskfile.bin", std::ios::out | std::ios::in  | std::ios::binary);
-    // TODO Handle: couldn't open file
-
-    dir_entry d_entries[BLOCK_SIZE / sizeof(dir_entry)];
-    uint16_t seek_position = 0;
+    std::string delimiter = "/";
     std::string token;
 
+    dir_entry d_entries[BLOCK_SIZE / sizeof(dir_entry)];
+
     // Find current position
-    if (strcmp("", path_pwd.c_str()) != 0) {
-        std::string tmp;
-        tmp = dirpath;
 
-        while((pos = tmp.find(delimiter)) != std::string::npos) {
-            token = tmp.substr(0, pos);
-            std::cout << token << std::endl;
-            tmp.erase(0, pos + delimiter.length());
+    std::string tmp;
+    tmp = dirpath;
 
-            myfile.seekp(seek_position);
-            myfile.read((char*)&d_entries, BLOCK_SIZE);
-            
+    // TODO maybe change this later :PPP
+    tmp = tmp + "/";
 
-            for(int i = 0; i < (BLOCK_SIZE / sizeof(dir_entry)); i++) {
+    while((pos = tmp.find(delimiter)) != std::string::npos) {
+        token = tmp.substr(0, pos);
+        //std::cout << token << std::endl;
+        tmp.erase(0, pos + delimiter.length());
 
+        disk.read(position, (uint8_t*)d_entries);
+
+        for(int i = 0; i < (BLOCK_SIZE / sizeof(dir_entry)); i++) {
+            if(strcmp(d_entries[i].file_name, token.c_str()) == 0) {
+                if(d_entries[i].type == 0) {
+                    std::cout << "ERROR: can't cd to file" << std::endl;
+                    return 1;
+                } else {
+                    path_pwd = token + "/";
+                    std::cout << path_pwd << std::endl;
+                    position = d_entries[i].first_blk;
+                }
             } 
-        }
-    }
-
-    while((pos = dirpath.find(delimiter)) != std::string::npos) {
-        token = dirpath.substr(0, pos);
-        std::cout << token << std::endl;
-        dirpath.erase(0, pos + delimiter.length());
-        
-
-
+        } 
     }
 
     std::cout << dirpath << std::endl;
@@ -696,6 +887,11 @@ FS::pwd()
 {
     std::cout << "FS::pwd()\n";
 
+    if(path_pwd.size() == 0) {
+        std::cout << "/" << std::endl;
+    } else {
+        std::cout << path_pwd << std::endl;
+    }
     return 0;
 }
 
