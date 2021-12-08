@@ -35,7 +35,9 @@ public:
     FS();
     ~FS();
     
-    std::pair<bool, std::list<uint16_t>> find_empty_dir_block(std::string pathname, uint32_t size, int type, int nr_blocks);
+    std::pair<uint16_t, bool> find_current_directory(std::string path, bool add);
+    std::pair<dir_entry, bool> find_file(std::string filepath);
+    std::tuple<bool, std::list<uint16_t>, uint16_t> find_empty_dir_block(std::string pathname, uint32_t size, int type, int nr_blocks);
     std::list<uint16_t> find_empty_fat_block(int amount);
 
     // formats the disk, i.e., creates an empty file system
@@ -67,7 +69,6 @@ public:
     int cd(std::string dirpath);
     // pwd prints the full path, i.e., from the root directory, to the current
     // directory, including the currect directory name
-    uint16_t find_current_directory();
     int pwd();
 
     // chmod <accessrights> <filepath> changes the access rights for the
