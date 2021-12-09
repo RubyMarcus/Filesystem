@@ -303,7 +303,6 @@ FS::create(std::string filepath)
         complete_path = path_pwd + filepath;
     }
 
-
     auto file_t = find_file(complete_path);
     bool success_t = std::get<1>(file_t);
 
@@ -367,7 +366,7 @@ FS::create(std::string filepath)
             disk.write(*it, (uint8_t*)char_array);
         } else {
             // TODO Test if this works later
-            std::string d_write = tmp.substr(i * BLOCK_SIZE, BLOCK_SIZE);
+            std::string d_write = tmp.substr(0, BLOCK_SIZE);
             std::strcpy(char_array, d_write.c_str());
             disk.write(*it, (uint8_t*)char_array);
             tmp.erase(0, BLOCK_SIZE);
