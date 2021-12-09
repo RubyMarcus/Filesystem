@@ -410,9 +410,14 @@ FS::cat(std::string filepath)
 
     // Check if we have permissions to read
     
-    if(file.access_rights != 0x04 || file.access_rights != (0x02 | 0x04) || file.access_rights == (0x04 | 0x01)) {
+    int access = (int)file.access_rights;
+    std::cout << "Access: " << access << std::endl;
+    
+    if(access == (0x04) || access == (0x04 | 0x02) || access == (0x04 | 0x01)) {
+        // ok access good
+    } else {
         std::cout << "ERROR: no permission to read file" << std::endl;
-        return 1;        
+        return 1;    
     }
     
     uint16_t f_entries[BLOCK_SIZE / sizeof(uint16_t)];
@@ -855,12 +860,15 @@ FS::append(std::string filepath1, std::string filepath2)
         return 1;
     }
     
-    if(file_t.access_rights != (0x04 | 0x02) ||  file_t.access_rights != (0x04 | 0x02 | 0x01)) {
-        std::cout << "ERROR: no permission to read or write file" << std::endl;
-        return 1;        
+    int access_t = (int)file_t.access_rights;
+    
+    if(access_t == (0x04) || access_t == (0x04 | 0x02) || access_t == (0x04 | 0x01)) {
+        // ok access good
+    } else {
+        std::cout << "ERROR: no permission to read file" << std::endl;
+        return 1;    
     }
-
-
+    
     complete_path = path_pwd + filepath2;
 
     // Found filepath1
@@ -878,7 +886,15 @@ FS::append(std::string filepath1, std::string filepath2)
         std::cout << "ERROR: Can't append directory." << std::endl;
         return 1;
     }
+
+    int access_g = (int)file_g.access_rights;
     
+    if(access_g == (0x02) || access_g == (0x04 | 0x02) || access_g == (0x02 | 0x01)) {
+        // ok access good
+    } else {
+        std::cout << "ERROR: no permission to write to file" << std::endl;
+        return 1;   
+    }
     auto dir_g = find_current_directory(complete_path, true);
     bool success_dir_g = std::get<1>(dir_g); 
     
@@ -1257,36 +1273,36 @@ FS::chmod(std::string accessrights, std::string filepath)
     auto split = split_file_name(complete_path);
     std::string name = std::get<0>(split);
 
-    std::vector<uint8_t> myVector(accessrights.begin(), accessrights.end());
-    uint8_t *access = &myVector[0];
-
     std::cout << "Filename: " << name << std::endl;
-    std::cout << "WWWW: " << *access << std::endl;
     std::cout << 0x01 << std::endl;
-
-    const uint8_t* p = reinterpret_cast<const uint8_t*>(accessrights.c_str()); 
+    
+    int access = stoi(accessrights);
+    
+    if(6 == (0x04 | 0x02)){
+        std::cout << "works " << std::endl;
+    }
 
     for(int i = 0; i < (BLOCK_SIZE / sizeof(dir_entry)); i++) {
         if(strcmp(d_entries[i].file_name, name.c_str()) == 0) {
-            if(*access == ((uint8_t)(0x04 | 0x2))) {
+            if(access == (0x04 | 0x02)) {
                 d_entries[i].access_rights = (0x04 | 0x02); 
 
-            } else if (*access == (0x01)) {
+            } else if (access == (0x01)) {
                 d_entries[i].access_rights = (0x01); 
 
-            } else if (*access == (0x02)) {
+            } else if (access == (0x02)) {
                 d_entries[i].access_rights = (0x02); 
 
-            } else if (*access == (0x04)) {
+            } else if (access == (0x04)) {
                 d_entries[i].access_rights = (0x04);
 
-            } else if (*access == (0x01 | 0x02)) {
+            } else if (access == (0x01 | 0x02)) {
                 d_entries[i].access_rights = (0x01 | 0x02);
                 
-            } else if (*access == (0x04 | 0x01)) {
+            } else if (access == (0x04 | 0x01)) {
                 d_entries[i].access_rights = (0x04 | 0x01);
                 
-            } else if (*access == (0x04 | 0x02 | 0x01)) {
+            } else if (access == (0x04 | 0x02 | 0x01)) {
                 d_entries[i].access_rights = (0x04 | 0x02 | 0x01);
 
             } else {
