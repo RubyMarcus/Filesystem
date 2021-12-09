@@ -948,6 +948,14 @@ FS::append(std::string filepath1, std::string filepath2)
         auto it_g = f_g_entries.end();
         it_g--;
         disk.read(*it_g, (uint8_t*)data_g);
+
+        if(diskspace_left >= 2) {
+            data_g[file_g.size] = '\n';
+            file_g.size = file_g.size + 1;
+
+            //data_g[file_g.size + 2] = 'r';
+            diskspace_left = diskspace_left -1;
+        } 
         
         int y = 0;
         for(int i = 0; i < sizeof(data_g); i++) {
