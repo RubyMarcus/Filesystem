@@ -536,12 +536,6 @@ FS::cp(std::string sourcepath, std::string destpath)
 
     dir_entry file_to_cpy = std::get<0>(t);
 
-    if(file.access_rights != 0x04 || file.access_rights != (0x02 | 0x04) || file.access_rights == (0x04 | 0x01)) {
-        std::cout << "ERROR: no permission to read file" << std::endl;
-        return 1;        
-    }
-
-
     // OK, file found, now copy();
     // TODO How do we handle if we copy to same dir?
     // TODO What happens if a file with same filename already exist in other directory
@@ -632,11 +626,6 @@ FS::mv(std::string sourcepath, std::string destpath)
     if(file_t.type == 1) {
         std::cout << "ERROR: Can't move directory." << std::endl;
         return 1;
-    }
-
-    if(file.access_rights != 0x04 || file.access_rights != (0x02 | 0x04) || file.access_rights == (0x04 | 0x01)) {
-        std::cout << "ERROR: no permission to read file" << std::endl;
-        return 1;        
     }
 
     
@@ -755,10 +744,12 @@ FS::rm(std::string filepath)
         return 1;
     }
     
+    /*
     if(file.access_rights != 0x04 || file.access_rights != (0x02 | 0x04) || file.access_rights == (0x04 | 0x01)) {
         std::cout << "ERROR: no permission to read file" << std::endl;
         return 1;        
     }
+    */
 
     
     auto dir_g = find_current_directory(complete_path, false);
@@ -1249,14 +1240,14 @@ FS::chmod(std::string accessrights, std::string filepath)
 
     uint16_t position_g = std::get<0>(dir_g);
 
-    dir_entry d_entries[BLOCK_SIZE / sizeof(dir_entry)]
+    dir_entry d_entries[BLOCK_SIZE / sizeof(dir_entry)];
 
-    disk.read(d_entries, (uint8_t*)d_entries);
+    disk.read(position_g, (uint8_t*)d_entries);
 
     auto split = split_file_name(complete_path);
     std::string name = std::get<0>(split);
 
-    std::cout << "Filename: " << split << std::endl;
+    std::cout << "Filename: " << name << std::endl;
 
     for(int i = 0; i < (BLOCK_SIZE / sizeof(dir_entry)); i++) {
             
