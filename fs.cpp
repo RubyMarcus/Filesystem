@@ -1109,6 +1109,16 @@ FS::mkdir(std::string dirpath)
     
     disk.read(*it_t, (uint8_t*)d_entries);
 
+    dir_entry temp;
+    strcpy(temp.file_name, "");
+    temp.first_blk;
+    temp.size = 0;
+    temp.type = 0;
+
+    for(int i = 1; i < (BLOCK_SIZE / sizeof(dir_entry)); i++) {
+        d_entries[i] = temp;
+    }
+
     d_entries[0] = sub_dir;
 
     std::cout << *it_t << std::endl;
