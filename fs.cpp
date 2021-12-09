@@ -1,6 +1,7 @@
 #include <iostream>
 #include <fstream>
 #include <cstring>
+#include <vector>
 #include <iomanip>
 #include <cmath>
 #include <math.h>
@@ -332,8 +333,17 @@ FS::create(std::string filepath)
 
     float calc = (l_data / s_block);
     float nr_blocks = std::ceil(calc);
-   
     std::string complete_path = path_pwd + filepath; 
+   
+    // Check that a file/dir with that name doesn't exists.
+    auto file_t = find_file(complete_path);
+    bool success_t = std::get<1>(file_t);
+
+    if(success_t) {
+        std::cout << "ERROR: name already used!" << std::endl;
+        return 1;
+    }
+
     auto dir_t = find_empty_dir_block(complete_path, s_data, 0, nr_blocks);
     bool dir_success = std::get<0>(dir_t);
     std::list<uint16_t> f_entries = std::get<1>(dir_t); 
@@ -479,7 +489,7 @@ FS::ls()
     
         std::string access_rights;
 
-        if((*it).access_rights == (0x04 | 0x2)) {
+        if((*it).access_rights == (0x04 | 0x02)) {
             access_rights = "rw-";
         } else if ((*it).access_rights == (0x01)) {
             access_rights = "--x";
@@ -1247,11 +1257,45 @@ FS::chmod(std::string accessrights, std::string filepath)
     auto split = split_file_name(complete_path);
     std::string name = std::get<0>(split);
 
+    std::vector<uint8_t> myVector(accessrights.begin(), accessrights.end());
+    uint8_t *access = &myVector[0];
+
     std::cout << "Filename: " << name << std::endl;
+    std::cout << "WWWW: " << *access << std::endl;
+    std::cout << 0x01 << std::endl;
+
+    const uint8_t* p = reinterpret_cast<const uint8_t*>(accessrights.c_str()); 
 
     for(int i = 0; i < (BLOCK_SIZE / sizeof(dir_entry)); i++) {
-            
+        if(strcmp(d_entries[i].file_name, name.c_str()) == 0) {
+            if(*access == ((uint8_t)(0x04 | 0x2))) {
+                d_entries[i].access_rights = (0x04 | 0x02); 
+
+            } else if (*access == (0x01)) {
+                d_entries[i].access_rights = (0x01); 
+
+            } else if (*access == (0x02)) {
+                d_entries[i].access_rights = (0x02); 
+
+            } else if (*access == (0x04)) {
+                d_entries[i].access_rights = (0x04);
+
+            } else if (*access == (0x01 | 0x02)) {
+                d_entries[i].access_rights = (0x01 | 0x02);
+                
+            } else if (*access == (0x04 | 0x01)) {
+                d_entries[i].access_rights = (0x04 | 0x01);
+                
+            } else if (*access == (0x04 | 0x02 | 0x01)) {
+                d_entries[i].access_rights = (0x04 | 0x02 | 0x01);
+
+            } else {
+                std::cout << "Invalid Permission: " << access << std::endl;
+            }
+        }
     }
+    
+    disk.write(position_g, (uint8_t*)d_entries);
 
     return 0;
 }
