@@ -56,7 +56,8 @@ FS::find_current_directory(std::string path, bool add) {
         path = std::get<1>(t);
         std::string name = std::get<0>(t);
     }
-    
+
+
     if (path.size() != 0) {
         std::string tmp;
         tmp = path;
@@ -89,14 +90,33 @@ FS::find_current_directory(std::string path, bool add) {
                         }
                     }
                 }
-            } 
-
+            }
+            
             // If we didn't find directory, then we return FAILURE
             if(!found) {
                 return std::make_pair(position, found);
             }
         }
-    }
+        
+        std::cout << tmp  << std::endl;
+        if (tmp.find("/") != std::string::npos) {
+            // found
+        } else {
+                disk.read(position, (uint8_t*)d_entries); 
+                
+                for(int i = 0; i < (BLOCK_SIZE / sizeof(dir_entry)); i++) {
+                    
+                    if(strcmp(tmp.c_str(), d_entries[i].file_name) == 0) {
+                        if(d_entries[i].type == 1) {
+
+                            found = true;
+                            position = d_entries[i].first_blk;
+                        }
+                    }
+                }
+            }
+    } 
+
     return std::make_pair(position, true);
 }
 
@@ -113,9 +133,11 @@ FS::find_file(std::string filepath) {
     uint16_t position = std::get<0>(t);
     bool success_t = std::get<1>(t);
 
+    // If position is not root
     auto split = split_file_name(filepath);
     std::string name = std::get<0>(split);
-     
+
+   
     bool found_file = false;
 
     if(!success_t) {
@@ -129,9 +151,11 @@ FS::find_file(std::string filepath) {
 
         if(strcmp(d_entries[i].file_name, name.c_str()) == 0) {
 
-            file = d_entries[i];
-            found_file = true;
-            break;
+             if(d_entries[i].type == 0) {
+                file = d_entries[i];
+                found_file = true;
+                break;
+             }
         }
     }
 
@@ -514,45 +538,69 @@ FS::cp(std::string sourcepath, std::string destpath)
 {
     std::cout << "FS::cp(" << sourcepath << "," << destpath << ")\n";
 
-    std::string complete_path;
+    std::string complete_path_source;
 
     if(sourcepath.at(0) == '/') {
         sourcepath.erase(0, 1);
-        complete_path = sourcepath; 
+        complete_path_source = sourcepath; 
     } else {
-        complete_path = path_pwd + sourcepath;
+        complete_path_source = path_pwd + sourcepath;
     }
 
 
     // Find file to copy
-    auto t = find_file(complete_path);
+    auto t = find_file(complete_path_source);
     bool success = std::get<1>(t);
 
     if(!success) {
-        std::cout << "ERROR: Could not find file! -> " << sourcepath << std::endl;
+        std::cout << "ERROR: Could not find file! -> " << complete_path_source << std::endl;
         return 1;
     }
 
     dir_entry file_to_cpy = std::get<0>(t);
 
+    std::string complete_path_dest;
+
     if(destpath.at(0) == '/') {
         destpath.erase(0, 1);
-        complete_path = destpath; 
+        complete_path_dest = destpath; 
     } else {
-        complete_path = path_pwd + destpath;
+        complete_path_dest = path_pwd + destpath;
     }
 
     // Check that file with that name does not already exist 
-    auto g = find_file(complete_path);
+    auto g = find_file(complete_path_dest);
     bool success_g = std::get<1>(g);
+    dir_entry file_g = std::get<0>(g);
 
-    if(success_g) {
+    bool new_file_name = true;
+
+    if(success_g && file_g.type == 0) {
         std::cout << "ERROR: A file with that name already exists " << destpath << std::endl;
         return 1;
+    } else {
+        new_file_name = false;
     }
+    
+    std::string name;
 
-    auto split = split_file_name(complete_path);
-    std::string name = std::get<0>(split);
+    if(new_file_name) {
+        auto split = split_file_name(complete_path_dest);
+        name = std::get<0>(split);
+    } else {
+        auto split_g = split_file_name(complete_path_source);  
+        name = std::get<0>(split_g);
+        complete_path_dest += "/";
+        complete_path_dest += name;
+        
+        g = find_file(complete_path_dest);
+        success_g = std::get<1>(g);
+
+        if(success_g) {
+            std::cout << "ERROR: A file with that name already exists " << destpath << std::endl;
+            return 1;
+        }
+    }
         
     if(name.size() > 52) {
         std::cout << "Too long filename" << std:: endl;
@@ -568,7 +616,7 @@ FS::cp(std::string sourcepath, std::string destpath)
     float calc = (l_data / s_block);
     float nr_blocks = std::ceil(calc);
 
-    auto d = find_empty_dir_block(complete_path, file_to_cpy.size, file_to_cpy.type, nr_blocks);
+    auto d = find_empty_dir_block(complete_path_dest, file_to_cpy.size, file_to_cpy.type, nr_blocks);
     bool success_d = std::get<0>(d);
     
     if(!success_d) {
@@ -622,17 +670,17 @@ FS::mv(std::string sourcepath, std::string destpath)
 {
     std::cout << "FS::mv(" << sourcepath << "," << destpath << ")\n";
 
-    std::string complete_path;
+    std::string complete_path_source;
 
     if(sourcepath.at(0) == '/') {
         sourcepath.erase(0, 1);
-        complete_path = sourcepath; 
+        complete_path_source = sourcepath; 
     } else {
-        complete_path = path_pwd + sourcepath;
+        complete_path_source = path_pwd + sourcepath;
     }
 
     // First of all we need to find the file to move.
-    auto t = find_file(complete_path);
+    auto t = find_file(complete_path_source);
     bool success_t = std::get<1>(t);
     dir_entry file_t = std::get<0>(t);
 
@@ -646,8 +694,8 @@ FS::mv(std::string sourcepath, std::string destpath)
         return 1;
     }
     
-    //  
-    auto source_dir = find_current_directory(complete_path, false);
+    // Find directory for source_path  
+    auto source_dir = find_current_directory(complete_path_source, true);
     bool success_source_dir = std::get<1>(t); 
 
     uint16_t source_position = std::get<0>(source_dir);
@@ -657,34 +705,65 @@ FS::mv(std::string sourcepath, std::string destpath)
         return 1;
     }
 
+    std::string complete_path_dest;
+
     // We found the file that we need to move
     // Now lets check that the destpath exists
     if(destpath.at(0) == '/') {
         destpath.erase(0, 1);
-        complete_path = destpath; 
+        complete_path_dest = destpath; 
     } else {
-        complete_path = path_pwd + destpath;
+        complete_path_dest = path_pwd + destpath;
     }
 
     // If check that there does not already exists a file with that filename
-    auto g = find_file(complete_path);
+    auto g = find_file(complete_path_dest);
     bool success_g = std::get<1>(g);
+    dir_entry file_g = std::get<0>(g);
 
-    if(success_g) {
+    std::cout << file_g.type << std::endl;
+   
+    bool new_file_name = true;
+
+    if(success_g && file_g.type == 0) {
         std::cout << "ERROR: There already exists a file with that name " << destpath << std::endl;
         return 1;
+    } else {
+        new_file_name = false;
     }
 
-    auto split = split_file_name(complete_path);
-    std::string name = std::get<0>(split);
+    std::string name;
+
+    if(new_file_name) {
+        auto split = split_file_name(complete_path_dest);
+        name = std::get<0>(split);
+    } else {
+        auto split_g = split_file_name(complete_path_source);  
+        name = std::get<0>(split_g);
+
+        // Check if file exists
+        std::string path_dest_tmp = complete_path_dest; 
+        path_dest_tmp += "/";
+        path_dest_tmp += name;
+
+        g = find_file(path_dest_tmp);
+        success_g = std::get<1>(g);
+
+        if(success_g) {
+            std::cout << "ERROR: A file with that name already exists " << destpath << std::endl;
+            return 1;
+        }
+ 
+    }
         
     if(name.size() > 52) {
         std::cout << "Too long filename" << std:: endl;
         return 1;
     }
 
+
     // Find directory for dest_path
-    auto dest_dir = find_current_directory(complete_path, true);
+    auto dest_dir = find_current_directory(complete_path_dest, new_file_name);
     bool success_dest_dir = std::get<1>(dest_dir); 
     
     if(!success_dest_dir) {
@@ -694,10 +773,8 @@ FS::mv(std::string sourcepath, std::string destpath)
 
     uint16_t dest_position = std::get<0>(dest_dir);
 
-    auto split_source = split_file_name(sourcepath);
+    auto split_source = split_file_name(complete_path_source);
     std::string name_source = std::get<0>(split_source);
-
-    std::cout << "Source name " << name_source << std::endl;
 
     if(source_position != dest_position) {
         // If not same folder remove dir_entry from source
@@ -717,20 +794,20 @@ FS::mv(std::string sourcepath, std::string destpath)
     dir_entry d_entries_dest[BLOCK_SIZE / sizeof(dir_entry)];
     disk.read(dest_position, (uint8_t*)d_entries_dest);
 
-    auto split_dest = split_file_name(destpath);
-    std::string name_dest = std::get<0>(split_dest);
+    // auto split_dest = split_file_name(destpath);
+    // std::string name_dest = std::get<0>(split_dest);
     
     for(int i = 0; i < (BLOCK_SIZE / sizeof(dir_entry)); i++) {
         if(source_position == dest_position) {
             if(strcmp(d_entries_dest[i].file_name, name_source.c_str()) == 0) {
-                strcpy(file_t.file_name, name_dest.c_str());
+                strcpy(file_t.file_name, name.c_str());
                 d_entries_dest[i] = file_t;
                 break;
             }
         } else {
             if(strcmp(d_entries_dest[i].file_name, "") == 0) {
                 if(d_entries_dest[i].first_blk == 0) {
-                    strcpy(file_t.file_name, name_dest.c_str());
+                    strcpy(file_t.file_name, name.c_str());
                     d_entries_dest[i] = file_t;
                     break;
                 }
@@ -901,11 +978,6 @@ FS::append(std::string filepath1, std::string filepath2)
         return 1;
     }
 
-    if(file_g.type == 1) {
-        std::cout << "ERROR: Can't append directory." << std::endl;
-        return 1;
-    }
-
     int access_g = (int)file_g.access_rights;
     
     if(access_g == (0x02) || access_g == (0x04 | 0x02) || access_g == (0x02 | 0x01)) {
@@ -913,6 +985,11 @@ FS::append(std::string filepath1, std::string filepath2)
     } else {
         std::cout << "ERROR: no permission to write to file" << std::endl;
         return 1;   
+    }
+    
+    if(file_g.type == 1) {
+        std::cout << "ERROR: Can't append directory." << std::endl;
+        return 1;
     }
 
     // Find source_path directory
