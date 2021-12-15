@@ -55,8 +55,11 @@ FS::find_current_directory(std::string path, bool add) {
         auto t = split_file_name(path);
         path = std::get<1>(t);
         std::string name = std::get<0>(t);
-    }
 
+        if(path == name) {
+            return std::make_pair(position, true);
+        }
+    }
 
     if (path.size() != 0) {
         std::string tmp;
@@ -102,19 +105,18 @@ FS::find_current_directory(std::string path, bool add) {
         if (tmp.find("/") != std::string::npos) {
             // found
         } else {
-                disk.read(position, (uint8_t*)d_entries); 
+            disk.read(position, (uint8_t*)d_entries); 
                 
-                for(int i = 0; i < (BLOCK_SIZE / sizeof(dir_entry)); i++) {
+            for(int i = 0; i < (BLOCK_SIZE / sizeof(dir_entry)); i++) {
                     
-                    if(strcmp(tmp.c_str(), d_entries[i].file_name) == 0) {
-                        if(d_entries[i].type == 1) {
-
-                            found = true;
-                            position = d_entries[i].first_blk;
-                        }
+                if(strcmp(tmp.c_str(), d_entries[i].file_name) == 0) {
+                    if(d_entries[i].type == 1) {
+                        found = true;
+                        position = d_entries[i].first_blk;
                     }
                 }
             }
+        }
     } 
 
     return std::make_pair(position, true);
@@ -129,7 +131,9 @@ FS::find_file(std::string filepath) {
     dir_entry file;
     dir_entry d_entries[BLOCK_SIZE / sizeof(dir_entry)];
    
-    auto t = find_current_directory(filepath, false);
+    std::cout << filepath << std::endl; 
+    
+    auto t = find_current_directory(filepath, true);
     uint16_t position = std::get<0>(t);
     bool success_t = std::get<1>(t);
 
@@ -137,11 +141,9 @@ FS::find_file(std::string filepath) {
     auto split = split_file_name(filepath);
     std::string name = std::get<0>(split);
 
-   
     bool found_file = false;
 
     if(!success_t) {
-        std::cout << "ERROR: path invalid." << std::endl;
         return std::make_pair(file, found_file);
     }
 
@@ -151,11 +153,9 @@ FS::find_file(std::string filepath) {
 
         if(strcmp(d_entries[i].file_name, name.c_str()) == 0) {
 
-             if(d_entries[i].type == 0) {
-                file = d_entries[i];
-                found_file = true;
-                break;
-             }
+            file = d_entries[i];
+            found_file = true;
+            break;
         }
     }
 
@@ -705,6 +705,7 @@ FS::mv(std::string sourcepath, std::string destpath)
         return 1;
     }
 
+
     std::string complete_path_dest;
 
     // We found the file that we need to move
@@ -851,7 +852,7 @@ FS::rm(std::string filepath)
     }
     */
     
-    auto dir_g = find_current_directory(complete_path, false);
+    auto dir_g = find_current_directory(complete_path, true);
     bool success_dir_g = std::get<1>(dir_g); 
     
     if(!success_dir_g) {
