@@ -545,15 +545,39 @@ FS::cp(std::string sourcepath, std::string destpath)
     // Check that file with that name does not already exist 
     auto g = find_file(complete_path);
     bool success_g = std::get<1>(g);
+    dir_entry file_g = std::get<0>(g);
 
-    if(success_g) {
+    bool file_unnamed = false;
+    std::string name;
+
+    if(file_g.type == 1 && success_g) {
+        auto split = split_file_name(sourcepath);
+        name = std::get<0>(split);
+    
+        complete_path = complete_path + "/" + name;
+        
+        // Check again if file exists
+        auto d = find_file(complete_path);
+        bool success_b = std::get<1>(d);
+
+        if(success_b) {
+            std::cout << "ERROR: A file with that name already exists " << destpath << std::endl;
+            return 1;
+        }
+
+        file_unnamed = true;
+    } 
+    
+    if (success_g && file_g.type == 0) {
         std::cout << "ERROR: A file with that name already exists " << destpath << std::endl;
         return 1;
     }
 
-    auto split = split_file_name(complete_path);
-    std::string name = std::get<0>(split);
-        
+    if(!file_unnamed) {
+        auto split = split_file_name(complete_path);
+        std::string name = std::get<0>(split);
+    }
+    
     if(name.size() > 52) {
         std::cout << "Too long filename" << std:: endl;
         return 1;
@@ -669,14 +693,39 @@ FS::mv(std::string sourcepath, std::string destpath)
     // If check that there does not already exists a file with that filename
     auto g = find_file(complete_path);
     bool success_g = std::get<1>(g);
+    dir_entry file_g = std::get<0>(g);
 
-    if(success_g) {
-        std::cout << "ERROR: There already exists a file with that name " << destpath << std::endl;
+    bool file_unnamed = false;
+    std::string name;
+
+    if(file_g.type == 1 && success_g) {
+        // directory
+        auto split = split_file_name(sourcepath);
+        name = std::get<0>(split);
+    
+        complete_path = complete_path + "/" + name;
+        
+        // Check again if file exists
+        auto d = find_file(complete_path);
+        bool success_b = std::get<1>(d);
+
+        if(success_b) {
+            std::cout << "ERROR: A file with that name already exists " << destpath << std::endl;
+            return 1;
+        }
+
+        file_unnamed = true;
+    } 
+    
+    if (success_g && file_g.type == 0) {
+        std::cout << "ERROR: A file with that name already exists " << destpath << std::endl;
         return 1;
     }
 
-    auto split = split_file_name(complete_path);
-    std::string name = std::get<0>(split);
+    if(!file_unnamed) {
+        auto split = split_file_name(complete_path);
+        name = std::get<0>(split);
+    }
         
     if(name.size() > 52) {
         std::cout << "Too long filename" << std:: endl;
@@ -697,7 +746,7 @@ FS::mv(std::string sourcepath, std::string destpath)
     auto split_source = split_file_name(sourcepath);
     std::string name_source = std::get<0>(split_source);
 
-    std::cout << "Source name " << name_source << std::endl;
+    //std::cout << "Source name " << name_source << std::endl;
 
     if(source_position != dest_position) {
         // If not same folder remove dir_entry from source
@@ -717,20 +766,17 @@ FS::mv(std::string sourcepath, std::string destpath)
     dir_entry d_entries_dest[BLOCK_SIZE / sizeof(dir_entry)];
     disk.read(dest_position, (uint8_t*)d_entries_dest);
 
-    auto split_dest = split_file_name(destpath);
-    std::string name_dest = std::get<0>(split_dest);
-    
     for(int i = 0; i < (BLOCK_SIZE / sizeof(dir_entry)); i++) {
         if(source_position == dest_position) {
             if(strcmp(d_entries_dest[i].file_name, name_source.c_str()) == 0) {
-                strcpy(file_t.file_name, name_dest.c_str());
+                strcpy(file_t.file_name, name.c_str());
                 d_entries_dest[i] = file_t;
                 break;
             }
         } else {
             if(strcmp(d_entries_dest[i].file_name, "") == 0) {
                 if(d_entries_dest[i].first_blk == 0) {
-                    strcpy(file_t.file_name, name_dest.c_str());
+                    strcpy(file_t.file_name, name.c_str());
                     d_entries_dest[i] = file_t;
                     break;
                 }
