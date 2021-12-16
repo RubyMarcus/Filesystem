@@ -608,7 +608,7 @@ FS::cp(std::string sourcepath, std::string destpath)
     bool success_d = std::get<0>(d);
     
     if(!success_d) {
-        std::cout << "ERROR: Could not find empty dir block" << std::endl;
+        std::cout << "ERROR: Could not create empty dir block" << std::endl;
         return 1;
     }
 
@@ -780,6 +780,16 @@ FS::mv(std::string sourcepath, std::string destpath)
 
         for(int i = 0; i < (BLOCK_SIZE / sizeof(dir_entry)); i++) {
             if(strcmp(d_entries_source[i].file_name, name_source.c_str()) == 0) {
+                
+                access = (int)d_entries_source[i].access_rights;
+                
+                if(access == (0x02) || access == (0x04 | 0x02) || access == (0x02 | 0x01) || access == (0x04 | 0x02 | 0x01) ) {
+                    // ok access good
+                } else {
+                    std::cout << "ERROR: no permission to write to file" << std::endl;
+                    return 1;    
+                }
+
                 strcpy(d_entries_source[i].file_name, "");
                 d_entries_source[i].first_blk = 0;
                 d_entries_source[i].size = 0;
@@ -812,14 +822,7 @@ FS::mv(std::string sourcepath, std::string destpath)
         } else {
             if(strcmp(d_entries_dest[i].file_name, "") == 0) {
                 if(d_entries_dest[i].first_blk == 0) {
-                    access = (int)d_entries_dest[i].access_rights;
-
-                    if(access == (0x02) || access == (0x04 | 0x02) || access == (0x02 | 0x01) || access == (0x04 | 0x02 | 0x01) ) {
-                        // ok access good
-                    } else {
-                        std::cout << "ERROR: no permission to write to file" << std::endl;
-                        return 1;    
-                    }
+                    
 
                     strcpy(file_t.file_name, name.c_str());
                     d_entries_dest[i] = file_t;
@@ -906,7 +909,7 @@ FS::rm(std::string filepath)
             if(access == (0x02) || access == (0x04 | 0x02) || access == (0x02 | 0x01) || access == (0x04 | 0x02 | 0x01))  {
                 // ok access good
             } else {
-                std::cout << "ERROR: no permission to write to file" << std::endl;
+                std::cout << "ERROR: no permission to remove file" << std::endl;
                 return 1;   
             }
     
