@@ -78,6 +78,7 @@ FS::find_current_directory(std::string path, bool add) {
                         return std::make_tuple(position, found, access_rights); 
                     } else {
                         found = true;
+                        access_rights = d_entries[i].access_rights;
                         if(token == "..") { 
                             // .. means that we go to parent directory
                             auto split = split_file_name(path_pwd);
@@ -1195,7 +1196,7 @@ FS::mkdir(std::string dirpath)
     sub_dir.first_blk = position;
     sub_dir.size = 0;   
     sub_dir.type = 1;
-    sub_dir.access_rights = 0x07;
+    sub_dir.access_rights = 0x06;
 
     dir_entry d_entries[BLOCK_SIZE / sizeof(dir_entry)];
     
