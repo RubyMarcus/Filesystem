@@ -482,6 +482,7 @@ FS::ls()
         }
     }
    
+    std::cout << "name" << std::setw(20) << "type" << std::setw(28) << "accessrights" << std::setw(20) << "size" << std::endl;
     for(std::list<dir_entry>::iterator it = content.begin(); it != content.end(); it++) {
         std::string type_name;
 
@@ -517,7 +518,6 @@ FS::ls()
 
     return 0;
 }
-
 // cp <sourcepath> <destpath> makes an exact copy of the file
 // <sourcepath> to a new file <destpath>
 int
@@ -867,17 +867,6 @@ FS::rm(std::string filepath)
 
     uint16_t position_g = std::get<0>(dir_g);
 
-    int access = (int)std::get<2>(dir_g);
-
-    if(position_g != 0) {
-        if(access == (0x02) || access == (0x04 | 0x02) || access == (0x02 | 0x01) || access == (0x04 | 0x02 | 0x01))  {
-            // ok access good
-        } else {
-            std::cout << "ERROR: no permission to write to file" << std::endl;
-            return 1;   
-        }
-    }
-
     int nr_files = 0;
 
     // Check if directory is empty
@@ -907,8 +896,19 @@ FS::rm(std::string filepath)
     disk.read(position_g, (uint8_t*)d_entries);
     
     // Find and remove dict
+
+    int access;
     for(int i = 0; i < (BLOCK_SIZE / sizeof(dir_entry)); i++) {
         if(strcmp(d_entries[i].file_name, name.c_str()) == 0) {
+            access = (int)d_entries[i].access_rights;
+
+            if(access == (0x02) || access == (0x04 | 0x02) || access == (0x02 | 0x01) || access == (0x04 | 0x02 | 0x01))  {
+                // ok access good
+            } else {
+                std::cout << "ERROR: no permission to write to file" << std::endl;
+                return 1;   
+            }
+    
             strcpy(d_entries[i].file_name, "");
             d_entries[i].first_blk = 0;
             d_entries[i].size = 0;
