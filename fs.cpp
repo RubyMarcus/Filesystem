@@ -153,6 +153,8 @@ FS::find_empty_dir_block(std::string pathname, uint32_t size, int type, int nr_b
     auto t = find_current_directory(pathname, true);
     bool success_t = std::get<1>(t); 
     
+    position = std::get<0>(t);
+
     // Return if the path is invalid path
     if(!success_t) {
         return std::make_tuple(success, f_entries, position);    
@@ -160,14 +162,15 @@ FS::find_empty_dir_block(std::string pathname, uint32_t size, int type, int nr_b
     
     int access = (int)std::get<2>(t);
     
-    if(access == (0x02) || access == (0x04 | 0x02) || access == (0x02 | 0x01) || access == (0x04 | 0x02 | 0x01))  {
-        // ok access good
-    } else {
-        std::cout << "ERROR: no permission to write to file" << std::endl;
-        return std::make_tuple(success, f_entries, position);   
+    if(position != 0) {
+        if(access == (0x02) || access == (0x04 | 0x02) || access == (0x02 | 0x01) || access == (0x04 | 0x02 | 0x01))  {
+            // ok access good
+        } else {
+            std::cout << "ERROR: no permission to write to file" << std::endl;
+            return std::make_tuple(success, f_entries, position);   
+        }
     }
 
-    position = std::get<0>(t);
     disk.read(position, (uint8_t*)d_entries);
 
     auto split = split_file_name(pathname);
@@ -744,12 +747,25 @@ FS::mv(std::string sourcepath, std::string destpath)
     auto dest_dir = find_current_directory(complete_path, true);
     bool success_dest_dir = std::get<1>(dest_dir); 
     
+    int access;
+
+    uint16_t dest_position = std::get<0>(dest_dir);
+
+    access = (int)std::get<2>(dest_dir);
+                
+    if(dest_position != 0) {
+        if(access == (0x02) || access == (0x04 | 0x02) || access == (0x02 | 0x01) || access == (0x04 | 0x02 | 0x01) ) {
+            // ok access good
+        } else {
+            std::cout << "ERROR: no permission to write to directory" << std::endl;
+            return 1;    
+        }
+    }
+    
     if(!success_dest_dir) {
         std::cout << "ERROR: Invalid path" << std::endl; 
         return 1;
     }
-
-    uint16_t dest_position = std::get<0>(dest_dir);
 
     auto split_source = split_file_name(sourcepath);
     std::string name_source = std::get<0>(split_source);
@@ -774,19 +790,17 @@ FS::mv(std::string sourcepath, std::string destpath)
     dir_entry d_entries_dest[BLOCK_SIZE / sizeof(dir_entry)];
     disk.read(dest_position, (uint8_t*)d_entries_dest);
 
-    int access;
-
     for(int i = 0; i < (BLOCK_SIZE / sizeof(dir_entry)); i++) {
         if(source_position == dest_position) {
 
             if(strcmp(d_entries_dest[i].file_name, name_source.c_str()) == 0) {
 
                 access = (int)d_entries_dest[i].access_rights;
-
+                
                 if(access == (0x02) || access == (0x04 | 0x02) || access == (0x02 | 0x01) || access == (0x04 | 0x02 | 0x01) ) {
                     // ok access good
                 } else {
-                    std::cout << "ERROR: no permission to write to directory" << std::endl;
+                    std::cout << "ERROR: no permission to write to file" << std::endl;
                     return 1;    
                 }
 
@@ -802,7 +816,7 @@ FS::mv(std::string sourcepath, std::string destpath)
                     if(access == (0x02) || access == (0x04 | 0x02) || access == (0x02 | 0x01) || access == (0x04 | 0x02 | 0x01) ) {
                         // ok access good
                     } else {
-                        std::cout << "ERROR: no permission to write to directory" << std::endl;
+                        std::cout << "ERROR: no permission to write to file" << std::endl;
                         return 1;    
                     }
 
@@ -855,11 +869,13 @@ FS::rm(std::string filepath)
 
     int access = (int)std::get<2>(dir_g);
 
-    if(access == (0x02) || access == (0x04 | 0x02) || access == (0x02 | 0x01) || access == (0x04 | 0x02 | 0x01))  {
-        // ok access good
-    } else {
-        std::cout << "ERROR: no permission to write to file" << std::endl;
-        return 1;   
+    if(position_g != 0) {
+        if(access == (0x02) || access == (0x04 | 0x02) || access == (0x02 | 0x01) || access == (0x04 | 0x02 | 0x01))  {
+            // ok access good
+        } else {
+            std::cout << "ERROR: no permission to write to file" << std::endl;
+            return 1;   
+        }
     }
 
     int nr_files = 0;
