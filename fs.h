@@ -35,7 +35,7 @@ public:
     FS();
     ~FS();
     
-    std::pair<uint16_t, bool> find_current_directory(std::string path, bool add);
+    std::tuple<uint16_t, bool, int> find_current_directory(std::string path, bool add);
     std::pair<dir_entry, bool> find_file(std::string filepath);
     std::tuple<bool, std::list<uint16_t>, uint16_t> find_empty_dir_block(std::string pathname, uint32_t size, int type, int nr_blocks);
     std::list<uint16_t> find_empty_fat_block(int amount);

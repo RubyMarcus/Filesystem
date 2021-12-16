@@ -34,11 +34,11 @@ std::pair<std::string, std::string> split_file_name(const std::string& str) {
     return std::make_pair(str.substr(found + 1), str.substr(0,found + 1));
 }
 
-std::pair<uint16_t, bool>
+std::tuple<uint16_t, bool, int>
 FS::find_current_directory(std::string path, bool add) {
     /*
      * This function finds the current directory for given path.
-     * Returns a pair with (block position for current directory, success) 
+     * Returns a pair with (block position for current directory, success, access for that directory) 
      */
 
     size_t pos = 0;
@@ -49,6 +49,7 @@ FS::find_current_directory(std::string path, bool add) {
 
     dir_entry d_entries[BLOCK_SIZE / sizeof(dir_entry)];
 
+    int access_rights;
     bool found = false; 
 
     if(add) {
@@ -74,7 +75,7 @@ FS::find_current_directory(std::string path, bool add) {
                     position = d_entries[i].first_blk;
                     if(d_entries[i].type == 0) {
                         std::cout << "ERROR: can't cd to file" << std::endl;
-                        return std::make_pair(position, found); 
+                        return std::make_tuple(position, found, access_rights); 
                     } else {
                         found = true;
                         if(token == "..") { 
@@ -93,11 +94,11 @@ FS::find_current_directory(std::string path, bool add) {
 
             // If we didn't find directory, then we return FAILURE
             if(!found) {
-                return std::make_pair(position, found);
+                return std::make_tuple(position, found, access_rights);
             }
         }
     }
-    return std::make_pair(position, true);
+    return std::make_tuple(position, true, access_rights);
 }
 
 std::pair<dir_entry, bool> 
@@ -155,6 +156,15 @@ FS::find_empty_dir_block(std::string pathname, uint32_t size, int type, int nr_b
     // Return if the path is invalid path
     if(!success_t) {
         return std::make_tuple(success, f_entries, position);    
+    }
+    
+    int access = (int)std::get<2>(t);
+    
+    if(access == (0x02) || access == (0x04 | 0x02) || access == (0x02 | 0x01) || access == (0x04 | 0x02 | 0x01))  {
+        // ok access good
+    } else {
+        std::cout << "ERROR: no permission to write to file" << std::endl;
+        return std::make_tuple(success, f_entries, position);   
     }
 
     position = std::get<0>(t);
@@ -399,7 +409,7 @@ FS::cat(std::string filepath)
     int access = (int)file.access_rights;
     std::cout << "Access: " << access << std::endl;
     
-    if(access == (0x04) || access == (0x04 | 0x02) || access == (0x04 | 0x01)) {
+    if(access == (0x04) || access == (0x04 | 0x02) || access == (0x04 | 0x01) || access == (0x04 | 0x02 | 0x01)) {
         // ok access good
     } else {
         std::cout << "ERROR: no permission to read file" << std::endl;
@@ -442,8 +452,6 @@ FS::ls()
     std::cout << "FS::ls()\n";
 
     dir_entry d_entries[BLOCK_SIZE / sizeof(dir_entry)];
-
-    std::cout << "Current pwd: " << path_pwd << std::endl;
 
     // Locate pwd directory
     auto t = find_current_directory(path_pwd, false);
@@ -629,8 +637,8 @@ FS::cp(std::string sourcepath, std::string destpath)
     // Copy data
     for(int i = 0; i < nr_blocks; i++) {
         disk.read(*it_old, (uint8_t*)data);
-        std::cout << *it_old << std::endl;
-        std::cout << "Data: " << data << std::endl;
+        //std::cout << *it_old << std::endl;
+        //std::cout << "Data: " << data << std::endl;
         disk.write(*it_new, (uint8_t*)data);
         std::advance(it_old, 1);
         std::advance(it_new, 1);
@@ -766,9 +774,22 @@ FS::mv(std::string sourcepath, std::string destpath)
     dir_entry d_entries_dest[BLOCK_SIZE / sizeof(dir_entry)];
     disk.read(dest_position, (uint8_t*)d_entries_dest);
 
+    int access;
+
     for(int i = 0; i < (BLOCK_SIZE / sizeof(dir_entry)); i++) {
         if(source_position == dest_position) {
+
             if(strcmp(d_entries_dest[i].file_name, name_source.c_str()) == 0) {
+
+                access = (int)d_entries_dest[i].access_rights;
+
+                if(access == (0x02) || access == (0x04 | 0x02) || access == (0x02 | 0x01) || access == (0x04 | 0x02 | 0x01) ) {
+                    // ok access good
+                } else {
+                    std::cout << "ERROR: no permission to write to directory" << std::endl;
+                    return 1;    
+                }
+
                 strcpy(file_t.file_name, name.c_str());
                 d_entries_dest[i] = file_t;
                 break;
@@ -776,6 +797,15 @@ FS::mv(std::string sourcepath, std::string destpath)
         } else {
             if(strcmp(d_entries_dest[i].file_name, "") == 0) {
                 if(d_entries_dest[i].first_blk == 0) {
+                    access = (int)d_entries_dest[i].access_rights;
+
+                    if(access == (0x02) || access == (0x04 | 0x02) || access == (0x02 | 0x01) || access == (0x04 | 0x02 | 0x01) ) {
+                        // ok access good
+                    } else {
+                        std::cout << "ERROR: no permission to write to directory" << std::endl;
+                        return 1;    
+                    }
+
                     strcpy(file_t.file_name, name.c_str());
                     d_entries_dest[i] = file_t;
                     break;
@@ -813,13 +843,6 @@ FS::rm(std::string filepath)
         return 1;
     }
     
-    /*
-    if(file.access_rights != 0x04 || file.access_rights != (0x02 | 0x04) || file.access_rights == (0x04 | 0x01)) {
-        std::cout << "ERROR: no permission to read file" << std::endl;
-        return 1;        
-    }
-    */
-    
     auto dir_g = find_current_directory(complete_path, false);
     bool success_dir_g = std::get<1>(dir_g); 
     
@@ -829,6 +852,15 @@ FS::rm(std::string filepath)
     }
 
     uint16_t position_g = std::get<0>(dir_g);
+
+    int access = (int)std::get<2>(dir_g);
+
+    if(access == (0x02) || access == (0x04 | 0x02) || access == (0x02 | 0x01) || access == (0x04 | 0x02 | 0x01))  {
+        // ok access good
+    } else {
+        std::cout << "ERROR: no permission to write to file" << std::endl;
+        return 1;   
+    }
 
     int nr_files = 0;
 
@@ -922,7 +954,7 @@ FS::append(std::string filepath1, std::string filepath2)
     
     int access_t = (int)file_t.access_rights;
     
-    if(access_t == (0x04) || access_t == (0x04 | 0x02) || access_t == (0x04 | 0x01)) {
+    if(access_t == (0x04) || access_t == (0x04 | 0x02) || access_t == (0x04 | 0x01) || access_t == (0x04 | 0x02 | 0x01))  {
         // ok access good
     } else {
         std::cout << "ERROR: no permission to read file" << std::endl;
@@ -954,7 +986,7 @@ FS::append(std::string filepath1, std::string filepath2)
 
     int access_g = (int)file_g.access_rights;
     
-    if(access_g == (0x02) || access_g == (0x04 | 0x02) || access_g == (0x02 | 0x01)) {
+    if(access_g == (0x02) || access_g == (0x04 | 0x02) || access_g == (0x02 | 0x01) || access_g == (0x04 | 0x02 | 0x01))  {
         // ok access good
     } else {
         std::cout << "ERROR: no permission to write to file" << std::endl;
@@ -1147,7 +1179,7 @@ FS::mkdir(std::string dirpath)
     sub_dir.first_blk = position;
     sub_dir.size = 0;   
     sub_dir.type = 1;
-    sub_dir.access_rights = 0x06;
+    sub_dir.access_rights = 0x07;
 
     dir_entry d_entries[BLOCK_SIZE / sizeof(dir_entry)];
     
