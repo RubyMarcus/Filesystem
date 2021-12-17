@@ -23,7 +23,6 @@ FS::~FS()
 }
 
 std::string path_pwd = "";
-int current_position = 0;
 
 std::list<uint16_t> find_empty_fat_block(int amount); 
 std::pair<uint16_t, bool> find_current_directory(std::string path);
@@ -285,6 +284,23 @@ FS::format()
     }   
 	  
     disk.write(1, (uint8_t*)f_entries);
+
+    // adding sub directory to root.
+    dir_entry d_entries[BLOCK_SIZE / sizeof(dir_entry)];
+
+    disk.read(0, (uint8_t*)d_entries);
+
+    dir_entry root_sub;
+    strcpy(root_sub.file_name, "..");
+    root_sub.size = 0;
+    root_sub.first_blk = 0;
+    root_sub.type = 1;
+    root_sub.access_rights = 6;
+
+    d_entries[0] = root_sub;
+
+    disk.write(0, (uint8_t*)d_entries);
+    
     return 0;
 }
 
@@ -507,8 +523,10 @@ FS::ls()
             access_rights = "-wx";
         } else if ((*it).access_rights == (0x04 | 0x01)) {
             access_rights = "r-x";
-        } else {
+        } else if ((*it).access_rights == (0x04 | 0x02 | 0x01)){
             access_rights = "rwx";
+        } else {
+            access_rights = "---";
         }
 
         std::cout << std::left << std::setw(20) << (*it).file_name;
@@ -1236,7 +1254,7 @@ FS::cd(std::string dirpath)
         path_pwd = "";        
         return 0;
     }
-    
+     
     if(dirpath.at(0) == '/') {
         dirpath.erase(0, 1);
         complete_path = dirpath + "/"; 
@@ -1244,11 +1262,13 @@ FS::cd(std::string dirpath)
         complete_path = path_pwd + dirpath + "/";
     }
 
+    /*
     // Go to root    
     if(strcmp(dirpath.c_str(), "/") == 0) {
         path_pwd = "";        
         return 0;
     }
+    */
 
     auto t = find_current_directory(complete_path, false);
     bool success_t = std::get<1>(t);
@@ -1273,10 +1293,12 @@ FS::cd(std::string dirpath)
         if(token != "..") {
             path_pwd = path_pwd + token + '/';
         } else {
-            path_pwd[path_pwd.size() - 1] = ' ';
-            auto split = split_file_name(path_pwd);
+            if(path_pwd != "") {
+                path_pwd[path_pwd.size() - 1] = ' ';
+                auto split = split_file_name(path_pwd);
 
-            path_pwd = std::get<1>(split);
+                path_pwd = std::get<1>(split);
+            }
         }
     } 
     
@@ -1369,8 +1391,12 @@ FS::chmod(std::string accessrights, std::string filepath)
             } else if (access == (0x04 | 0x02 | 0x01)) {
                 d_entries[i].access_rights = (0x04 | 0x02 | 0x01);
 
+            } else if (access == 0) {
+                d_entries[i].access_rights = 0;
+
             } else {
                 std::cout << "Invalid Permission: " << access << std::endl;
+
             }
         }
     }
