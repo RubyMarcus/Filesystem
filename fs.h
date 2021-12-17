@@ -35,9 +35,22 @@ public:
     FS();
     ~FS();
     
+    // Find the position of the current directory in path, and returns a success and failure.
     std::tuple<uint16_t, bool, int> find_current_directory(std::string path, bool add);
+
+    // Checks if dir_entry exists in given path and returns that dir_entry if found.
+    // Also returns a bool with success or failure.
     std::pair<dir_entry, bool> find_file(std::string filepath);
+
+    // Allocates empty dir_entry block. Takes in pathname, size, type of file, nr of blocks.
+    // Returns a bool representing failure or success.
+    // A list representing the all the FAT blocks allocated.
+    // And lastly the position of parent directory.
     std::tuple<bool, std::list<uint16_t>, uint16_t> find_empty_dir_block(std::string pathname, uint32_t size, int type, int nr_blocks);
+
+    // Allocates empty fat blocks:
+    // Takes in the amount of FAT blocks that are needed.
+    // Returns a list with positions of all the FAT blocks
     std::list<uint16_t> find_empty_fat_block(int amount);
 
     // formats the disk, i.e., creates an empty file system
