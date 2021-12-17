@@ -265,8 +265,6 @@ FS::find_empty_fat_block(int amount) {
 int
 FS::format()
 {
-    std::cout << "FS::format()\n";
-
     int16_t f_entries[BLOCK_SIZE/2];
 
     // Format the fat entries.
@@ -309,7 +307,6 @@ FS::format()
 int
 FS::create(std::string filepath)
 {
-    std::cout << "FS::create(" << filepath << ")\n";
     std::string complete_path;
 
     if(filepath.at(0) == '/') {
@@ -400,8 +397,6 @@ FS::create(std::string filepath)
 int
 FS::cat(std::string filepath)
 {
-    std::cout << "FS::cat(" << filepath << ")\n";
-
     std::string complete_path;
 
     if(filepath.at(0) == '/') {
@@ -469,8 +464,6 @@ FS::cat(std::string filepath)
 int
 FS::ls()
 {
-    std::cout << "FS::ls()\n";
-
     dir_entry d_entries[BLOCK_SIZE / sizeof(dir_entry)];
 
     // Locate pwd directory
@@ -542,8 +535,6 @@ FS::ls()
 int
 FS::cp(std::string sourcepath, std::string destpath)
 {
-    std::cout << "FS::cp(" << sourcepath << "," << destpath << ")\n";
-
     std::string complete_path;
 
     if(sourcepath.at(0) == '/') {
@@ -674,8 +665,6 @@ FS::cp(std::string sourcepath, std::string destpath)
 int
 FS::mv(std::string sourcepath, std::string destpath)
 {
-    std::cout << "FS::mv(" << sourcepath << "," << destpath << ")\n";
-
     std::string complete_path;
 
     if(sourcepath.at(0) == '/') {
@@ -859,8 +848,6 @@ FS::mv(std::string sourcepath, std::string destpath)
 int
 FS::rm(std::string filepath)
 {
-    std::cout << "FS::rm(" << filepath << ")\n";
-
     std::string complete_path;
 
     if(filepath.at(0) == '/') {
@@ -964,7 +951,6 @@ FS::rm(std::string filepath)
 int
 FS::append(std::string filepath1, std::string filepath2)
 {
-    std::cout << "FS::append(" << filepath1 << "," << filepath2 << ")\n";
     std::string complete_path;
 
     if(filepath1.at(0) == '/') {
@@ -1177,8 +1163,6 @@ FS::append(std::string filepath1, std::string filepath2)
 int
 FS::mkdir(std::string dirpath)
 {
-    std::cout << "FS::mkdir(" << dirpath << ")\n";
-
     std::string complete_path;
      
     if(dirpath.at(0) == '/') {
@@ -1245,8 +1229,6 @@ FS::mkdir(std::string dirpath)
 int
 FS::cd(std::string dirpath)
 {
-    std::cout << "FS::cd(" << dirpath << ")\n";
-
     std::string complete_path;
     
     // Go to root    
@@ -1301,8 +1283,6 @@ FS::cd(std::string dirpath)
             }
         }
     } 
-    
-    std::cout << dirpath << std::endl;
 
     return 0;
 }
@@ -1312,8 +1292,6 @@ FS::cd(std::string dirpath)
 int
 FS::pwd()
 {
-    std::cout << "FS::pwd()\n";
-
     if(path_pwd.size() == 0) {
         std::cout << "/" << std::endl;
     } else {
@@ -1327,8 +1305,6 @@ FS::pwd()
 int
 FS::chmod(std::string accessrights, std::string filepath)
 {
-    std::cout << "FS::chmod(" << accessrights << "," << filepath << ")\n";
-
     std::string complete_path;
 
     if(filepath.at(0) == '/') {
